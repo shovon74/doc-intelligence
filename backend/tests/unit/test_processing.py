@@ -9,8 +9,9 @@ import pytest
 from PIL import Image
 
 from app.processing import pdf_processor, spreadsheet_processor
-from app.processing.pdf_processor import PDFProcessingError, stream_pdf_pages
-from app.processing.pipeline import ProcessingError, process_document
+from app.processing.errors import DocumentError, ErrorCode, get_error_info
+from app.processing.pdf_processor import stream_pdf_pages
+from app.processing.pipeline import process_document
 from app.storage import file_handler
 from app.storage.file_handler import _resolve_mime
 
@@ -83,9 +84,10 @@ def test_pdf_without_ocr_returns_digital_text(tmp_path):
 def test_pdf_corrupt_file_raises(tmp_path):
     bad = tmp_path / "bad.pdf"
     bad.write_bytes(b"not a pdf at all")
-    with pytest.raises(PDFProcessingError):
+    with pytest.raises(DocumentError) as ei:
         list(stream_pdf_pages(bad))
-    with pytest.raises(PDFProcessingError):
+    assert ei.value.code is ErrorCode.CORRUPT_FILE
+    with pytest.raises(DocumentError):
         pdf_processor.get_page_count(bad)
 
 
@@ -128,8 +130,9 @@ def test_xlsx_multi_sheet_and_cleanup(tmp_path):
 def test_corrupt_workbook_raises(tmp_path):
     f = tmp_path / "bad.xlsx"
     f.write_bytes(b"garbage")
-    with pytest.raises(spreadsheet_processor.SpreadsheetProcessingError):
+    with pytest.raises(DocumentError) as ei:
         list(spreadsheet_processor.stream_sheets(f, "xlsx"))
+    assert ei.value.code is ErrorCode.CORRUPT_FILE
 
 
 # ---------------------------------------------------------------- file handler
@@ -151,12 +154,14 @@ def test_resolve_mime(detected, name, expected):
 def test_save_upload_rejects_oversize_and_unsupported(tmp_path, monkeypatch):
     monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(file_handler, "MAX_BYTES", 10)
-    with pytest.raises(file_handler.FileTooLargeError):
+    with pytest.raises(DocumentError) as ei:
         file_handler.save_upload(b"x" * 11, "a.pdf", MagicMock())
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
     monkeypatch.setattr(file_handler, "MAX_BYTES", 10**6)
     monkeypatch.setattr(file_handler, "_detect_mime", lambda p: "application/x-msdownload")
-    with pytest.raises(file_handler.UnsupportedFormatError):
+    with pytest.raises(DocumentError) as ei:
         file_handler.save_upload(b"MZ....", "a.pdf", MagicMock())
+    assert ei.value.code is ErrorCode.UNSUPPORTED_TYPE
     assert list(tmp_path.iterdir()) == []                  # temp dirs cleaned up
 
 
@@ -215,13 +220,25 @@ def test_pipeline_csv(tmp_path):
     assert result["pages"] == 1 and doc.status == "extracting"
 
 
+def _assert_friendly_failure(doc, code, secret=None):
+    """Document is failed, carries the standard user-facing message and no internals."""
+    assert doc.status == "failed" and doc.error_code == code.value
+    assert doc.error_message == get_error_info(code).message
+    if secret:
+        assert secret not in doc.error_message
+
+
+def _with_ocr(monkeypatch, ocr):
+    monkeypatch.setattr("app.processing.pipeline.image_processor", ocr)
+
+
 @pytest.mark.unit
 def test_pipeline_missing_file_marks_failed(tmp_path):
     doc = _fake_doc(tmp_path / "gone.pdf", "pdf")
-    with pytest.raises(ProcessingError) as ei:
+    with pytest.raises(DocumentError) as ei:
         process_document(_db_for(doc), doc.id)
-    assert ei.value.code == "file_missing"
-    assert doc.status == "failed" and doc.error_code == "file_missing"
+    assert ei.value.code is ErrorCode.INTERNAL_ERROR
+    _assert_friendly_failure(doc, ErrorCode.INTERNAL_ERROR, secret="gone.pdf")
 
 
 @pytest.mark.unit
@@ -229,18 +246,79 @@ def test_pipeline_corrupt_pdf_marks_failed(tmp_path):
     bad = tmp_path / "bad.pdf"
     bad.write_bytes(b"junk")
     doc = _fake_doc(bad, "pdf")
-    with pytest.raises(ProcessingError) as ei:
+    with pytest.raises(DocumentError) as ei:
         process_document(_db_for(doc), doc.id)
-    assert ei.value.code == "unreadable_file" and doc.status == "failed"
+    assert ei.value.code is ErrorCode.CORRUPT_FILE
+    _assert_friendly_failure(doc, ErrorCode.CORRUPT_FILE, secret="Cannot open")
+
+
+@pytest.mark.unit
+def test_pipeline_encrypted_pdf_marks_failed(tmp_path):
+    src = make_pdf(tmp_path / "plain.pdf", [LONG_TEXT])
+    enc = tmp_path / "enc.pdf"
+    d = fitz.open(str(src))
+    d.save(str(enc), encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="owner")
+    d.close()
+    doc = _fake_doc(enc, "pdf")
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.ENCRYPTED_PDF
+    _assert_friendly_failure(doc, ErrorCode.ENCRYPTED_PDF)
+
+
+@pytest.mark.unit
+def test_pipeline_unexpected_exception_becomes_friendly_internal_error(tmp_path, monkeypatch):
+    f = tmp_path / "a.csv"
+    f.write_text("a,b\n1,2\n")
+    doc = _fake_doc(f, "csv")
+    db = _db_for(doc)
+
+    def boom(*a, **k):
+        raise KeyError("/srv/secret/internal/path")
+
+    monkeypatch.setattr("app.processing.pipeline._plan", boom)
+    with pytest.raises(DocumentError) as ei:
+        process_document(db, doc.id)
+    assert ei.value.code is ErrorCode.INTERNAL_ERROR
+    _assert_friendly_failure(doc, ErrorCode.INTERNAL_ERROR, secret="/srv/secret")
+    # technical detail is kept for operators in the event details only
+    event = db.add.call_args_list[-1].args[0]
+    assert event.status == "failed" and "/srv/secret" in event.details["detail"]
+
+
+@pytest.mark.unit
+def test_pipeline_all_pages_failed_uses_ocr_failed(tmp_path, monkeypatch):
+    doc = _fake_doc(make_pdf(tmp_path / "scan.pdf", ["", ""]), "pdf")
+    ocr = MagicMock()
+    ocr.ocr_from_bytes.side_effect = RuntimeError("tesseract exploded at /usr/bin")
+    _with_ocr(monkeypatch, ocr)
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.OCR_FAILED
+    _assert_friendly_failure(doc, ErrorCode.OCR_FAILED, secret="tesseract exploded")
+
+
+@pytest.mark.unit
+def test_failed_page_stores_friendly_message_not_raw_error(tmp_path, monkeypatch):
+    doc = _fake_doc(make_pdf(tmp_path / "mix.pdf", [LONG_TEXT, ""]), "pdf")
+    db = _db_for(doc)
+    ocr = MagicMock()
+    ocr.ocr_from_bytes.side_effect = RuntimeError("raw tesseract failure")
+    _with_ocr(monkeypatch, ocr)
+    result = process_document(db, doc.id)
+    assert result["failed_pages"] == 1 and doc.status == "extracting"
+    bad = [p for c in db.add_all.call_args_list for p in c.args[0] if p.status == "failed"]
+    assert bad[0].error_message == get_error_info(ErrorCode.CORRUPT_FILE).message
+    assert "raw tesseract" not in bad[0].error_message
 
 
 @pytest.mark.unit
 def test_pipeline_unknown_document():
     db = MagicMock()
     db.get.return_value = None
-    with pytest.raises(ProcessingError) as ei:
+    with pytest.raises(DocumentError) as ei:
         process_document(db, uuid.uuid4())
-    assert ei.value.code == "not_found"
+    assert ei.value.code is ErrorCode.INTERNAL_ERROR
 
 
 # ---------------------------------------------------------------- OCR (needs tesseract)

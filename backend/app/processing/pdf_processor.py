@@ -7,6 +7,7 @@ from typing import Generator
 import fitz  # PyMuPDF
 
 from app.core.config import settings
+from app.processing.errors import DocumentError, ErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +33,16 @@ def _extract_page_text(page: fitz.Page) -> str:
     return page.get_text("text", sort=True).strip()
 
 
-class PDFProcessingError(Exception):
-    """Raised when a PDF cannot be opened (corrupt, encrypted, ...)."""
-
-
 def _open_pdf(file_path: Path) -> fitz.Document:
     try:
         doc = fitz.open(str(file_path))
     except Exception as e:  # fitz raises several distinct error types
-        raise PDFProcessingError(f"Cannot open PDF: {e}") from e
+        raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot open PDF: {e}") from e
     if doc.needs_pass:
         # Try an empty password (many "encrypted" PDFs only restrict editing)
         if not doc.authenticate(""):
             doc.close()
-            raise PDFProcessingError("PDF is password protected")
+            raise DocumentError(ErrorCode.ENCRYPTED_PDF, "PDF requires a password")
     return doc
 
 
@@ -70,7 +67,7 @@ def stream_pdf_pages(
     ``ocr_from_bytes(bytes) -> (text, confidence)``). A failure on one page is
     reported on that PageResult and does not abort the document.
 
-    Raises PDFProcessingError if the file cannot be opened.
+    Raises DocumentError (CORRUPT_FILE / ENCRYPTED_PDF) if the file cannot be opened.
     """
     doc = _open_pdf(file_path)
     try:

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import Document
+from app.processing.errors import DocumentError, ErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,6 @@ AMBIGUOUS_MIME_BY_EXT: dict[str, tuple[str, set[str]]] = {
     "tiff": ("image/tiff", {"image/x-tiff"}),
 }
 EXT_ALIASES = {"jpeg": "jpg", "tif": "tiff"}
-
-
-class FileTooLargeError(Exception):
-    pass
-
-
-class UnsupportedFormatError(Exception):
-    pass
 
 
 def _detect_mime(file_path: Path) -> str:
@@ -100,8 +93,9 @@ def save_upload(
     """
     size_bytes = len(file_bytes)
     if size_bytes > MAX_BYTES:
-        raise FileTooLargeError(
-            f"File size {size_bytes / 1024 / 1024:.1f} MB exceeds limit of {settings.MAX_UPLOAD_MB} MB"
+        raise DocumentError(
+            ErrorCode.FILE_TOO_LARGE,
+            f"{size_bytes / 1024 / 1024:.1f} MB exceeds limit of {settings.MAX_UPLOAD_MB} MB",
         )
 
     # Write to a temp path for magic detection
@@ -116,10 +110,7 @@ def save_upload(
         # Magic byte MIME detection (ignore client extension)
         mime_type = _resolve_mime(_detect_mime(tmp_path), original_filename)
         if mime_type not in ALLOWED_MIME_TYPES:
-            raise UnsupportedFormatError(
-                f"File type '{mime_type}' is not supported. "
-                f"Allowed: PDF, JPEG, PNG, TIFF, XLSX, XLS, CSV."
-            )
+            raise DocumentError(ErrorCode.UNSUPPORTED_TYPE, f"detected type '{mime_type}'")
 
         file_ext = ALLOWED_MIME_TYPES[mime_type]
 
@@ -170,12 +161,12 @@ def save_upload(
             "is_duplicate": False,
         }
 
-    except (FileTooLargeError, UnsupportedFormatError):
+    except DocumentError:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
     except Exception as e:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise RuntimeError(f"Failed to save upload: {e}") from e
+        raise DocumentError(ErrorCode.INTERNAL_ERROR, f"Failed to save upload: {e!r}") from e
 
 
 def register_document(

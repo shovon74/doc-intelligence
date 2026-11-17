@@ -18,6 +18,7 @@ from typing import Callable, Iterator
 from sqlalchemy.orm import Session
 
 from app.db.models import Document, DocumentPage, ProcessingEvent
+from app.processing.errors import DocumentError, ErrorCode, get_error_info, to_document_error
 from app.processing import image_processor, pdf_processor, spreadsheet_processor
 
 logger = logging.getLogger(__name__)
@@ -28,13 +29,6 @@ PROCESSING_PROGRESS_SHARE = 50.0   # processing = first half of overall progress
 PDF_EXTS = {"pdf"}
 IMAGE_EXTS = {"jpg", "jpeg", "png", "tiff", "tif"}
 SHEET_EXTS = {"xlsx", "xls", "csv"}
-
-
-class ProcessingError(Exception):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
 
 
 def _image_pages(path: Path) -> Iterator[dict]:
@@ -70,12 +64,17 @@ def _plan(path: Path, ext: str) -> tuple[int, Iterator[dict]]:
             return image_processor.count_image_frames(path), _image_pages(path)
         if ext in SHEET_EXTS:
             return spreadsheet_processor.count_sheets(path, ext), _sheet_pages(path, ext)
-    except (pdf_processor.PDFProcessingError,
-            spreadsheet_processor.SpreadsheetProcessingError) as e:
-        raise ProcessingError("unreadable_file", str(e)) from e
+    except DocumentError:
+        raise
     except Exception as e:
-        raise ProcessingError("unreadable_file", f"Cannot open file: {e}") from e
-    raise ProcessingError("unsupported_format", f"No processor for '.{ext}' files")
+        raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot open file: {e!r}") from e
+    raise DocumentError(ErrorCode.UNSUPPORTED_TYPE, f"No processor for '.{ext}' files")
+
+
+def _page_error_message(source_type: str) -> str:
+    """User-facing text for a single failed page (raw errors are only logged)."""
+    code = ErrorCode.OCR_FAILED if source_type == "ocr" else ErrorCode.CORRUPT_FILE
+    return get_error_info(code).message
 
 
 def _event(db: Session, doc_id: uuid.UUID, status: str, message: str | None = None,
@@ -94,12 +93,15 @@ def process_document(
 
     On success the document is left in status "extracting" (next stage's input).
     On failure the document is marked "failed" with error_code/error_message and
-    ProcessingError is re-raised. Returns a small summary dict.
+    the DocumentError is re-raised. Returns a small summary dict.
+
+    The stored error_message is always the friendly text for the error code;
+    technical detail goes only to the log and the processing-event details.
     """
     doc_id = uuid.UUID(str(document_id))
     doc = db.get(Document, doc_id)
     if doc is None:
-        raise ProcessingError("not_found", f"Document {doc_id} does not exist")
+        raise DocumentError(ErrorCode.INTERNAL_ERROR, f"Document {doc_id} does not exist")
 
     t_start = time.time()
     doc.status, doc.progress_percent = "processing", 0.0
@@ -112,9 +114,10 @@ def process_document(
     try:
         path = Path(doc.stored_path)
         if not path.is_file():
-            raise ProcessingError("file_missing", f"Stored file not found: {doc.stored_path}")
+            raise DocumentError(ErrorCode.INTERNAL_ERROR, f"Stored file not found: {doc.stored_path}")
 
-        total, pages = _plan(path, doc.file_ext.lower().lstrip("."))
+        ext = doc.file_ext.lower().lstrip(".")
+        total, pages = _plan(path, ext)
         doc.page_count = total
         db.commit()
 
@@ -140,14 +143,15 @@ def process_document(
                 ocr_confidence=p["ocr_confidence"],
                 char_count=len(p["text"]),
                 status="failed" if p["error"] else "completed",
-                error_message=p["error"],
+                error_message=_page_error_message(p["source_type"]) if p["error"] else None,
             ))
             if len(batch) >= BATCH_SIZE:
                 flush()
         flush()
 
         if total and failed == total:
-            raise ProcessingError("all_pages_failed", f"All {total} pages failed to process")
+            code = ErrorCode.CORRUPT_FILE if ext in SHEET_EXTS else ErrorCode.OCR_FAILED
+            raise DocumentError(code, f"All {total} pages failed to process")
 
         ms = int((time.time() - t_start) * 1000)
         doc.status = "extracting"
@@ -160,10 +164,12 @@ def process_document(
 
     except Exception as e:
         db.rollback()
-        err = e if isinstance(e, ProcessingError) else ProcessingError("processing_error", str(e))
-        logger.exception(f"Processing failed for document {doc_id}")
+        err = to_document_error(e)
+        logger.exception(f"Processing failed for document {doc_id} [{err.code.value}]")
         doc = db.get(Document, doc_id)
-        doc.status, doc.error_code, doc.error_message = "failed", err.code, err.message[:2000]
-        _event(db, doc_id, "failed", err.message[:2000], int((time.time() - t_start) * 1000))
+        doc.status = "failed"
+        doc.error_code, doc.error_message = err.code.value, err.message
+        _event(db, doc_id, "failed", err.message, int((time.time() - t_start) * 1000),
+               {"code": err.code.value, "retryable": err.retryable, "detail": err.detail})
         db.commit()
         raise err from e

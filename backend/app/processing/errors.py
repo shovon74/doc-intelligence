@@ -37,34 +37,43 @@ ERROR_INFO: dict[ErrorCode, ErrorInfo] = {
     info.code: info
     for info in (
         ErrorInfo(ErrorCode.UNSUPPORTED_TYPE,
-                  "This file type is not supported. Upload a PDF, JPG, PNG, TIFF, XLSX, XLS or CSV file.",
-                  False),
+                  "This file type is not supported. Upload a PDF, JPG, PNG, TIFF, XLSX, XLS or "
+                  "CSV file.", False),
         ErrorInfo(ErrorCode.FILE_TOO_LARGE,
-                  "The file exceeds the maximum allowed size or page/row limit.", False),
+                  "The file is too large to process. Split it into smaller files and upload "
+                  "them again.", False),
         ErrorInfo(ErrorCode.CORRUPT_FILE,
-                  "The file is damaged or cannot be read.", False),
+                  "The file is damaged or cannot be read. Check that it opens on your computer, "
+                  "then upload it again.", False),
         ErrorInfo(ErrorCode.ENCRYPTED_PDF,
-                  "The PDF is password protected. Remove the password and upload it again.", False),
+                  "The PDF is password protected. Remove the password and upload it again.",
+                  False),
         ErrorInfo(ErrorCode.EMPTY_FILE,
-                  "The file is empty.", False),
+                  "The file is empty. Upload a file that contains data.", False),
         ErrorInfo(ErrorCode.OCR_FAILED,
-                  "Text could not be recognised in the scanned document.", False),
+                  "The scanned text could not be read. Upload a clearer, higher-resolution scan "
+                  "or a text-based file, or try Reprocess.", False),
         ErrorInfo(ErrorCode.LLM_NOT_CONFIGURED,
-                  "No LLM provider is configured. Set OPENAI_API_KEY or GEMINI_API_KEY and restart.",
-                  False),
+                  "No AI provider is configured. Ask an administrator to set OPENAI_API_KEY or "
+                  "GEMINI_API_KEY, then use Reprocess.", False),
         ErrorInfo(ErrorCode.LLM_PROVIDER_UNAVAILABLE,
-                  "The LLM provider is temporarily unavailable. Try again shortly.", True),
+                  "The AI provider is temporarily unavailable. Try Reprocess in a few minutes.",
+                  True),
         ErrorInfo(ErrorCode.LLM_RATE_LIMITED,
-                  "The LLM provider rate limit was reached. The request will be retried.", True),
+                  "The AI provider is busy (rate limit reached). It will be retried "
+                  "automatically; you can also try Reprocess later.", True),
         ErrorInfo(ErrorCode.EXTRACTION_PARSE_ERROR,
-                  "The model returned a response that could not be parsed into invoice data.",
-                  False),
+                  "The AI response could not be understood. Try Reprocess, choose another "
+                  "provider if one is available, or enter the values manually.", False),
         ErrorInfo(ErrorCode.NO_TEXT_FOUND,
-                  "No readable text was found in the document.", False),
+                  "No readable text was found in the document. Upload a clearer scan or a "
+                  "text-based file.", False),
         ErrorInfo(ErrorCode.PROCESSING_TIMEOUT,
-                  "Processing took too long and was stopped. Try reprocessing the document.", True),
+                  "Processing took too long and was stopped. Try Reprocess; for very large "
+                  "files, split them first.", True),
         ErrorInfo(ErrorCode.INTERNAL_ERROR,
-                  "An unexpected error occurred while processing the document.", True),
+                  "Something went wrong while processing the document. Try Reprocess; if it "
+                  "keeps failing, contact support.", True),
     )
 }
 
@@ -78,14 +87,24 @@ class DocumentError(Exception):
     """
     Raised anywhere in the processing path for a user-visible failure.
 
-    ``message`` defaults to the standard text for the code; pass ``detail`` to
-    append specifics (e.g. the parser's error) without losing the friendly text.
+    ``message`` is ALWAYS the standard user-facing text for the code. ``detail``
+    holds technical information (parser error, path, ...) for logs and the
+    processing-event details only; it must never be shown to end users.
     """
 
     def __init__(self, code: ErrorCode | str, detail: str | None = None):
         info = get_error_info(code)
         self.code = info.code
         self.retryable = info.retryable
+        self.message = info.message
         self.detail = detail
-        self.message = f"{info.message} ({detail})" if detail else info.message
-        super().__init__(self.message)
+        super().__init__(f"{info.code.value}: {detail}" if detail else info.code.value)
+
+
+def to_document_error(exc: BaseException) -> DocumentError:
+    """Convert any exception into a DocumentError; unknown ones become INTERNAL_ERROR."""
+    if isinstance(exc, DocumentError):
+        return exc
+    if isinstance(exc, TimeoutError):
+        return DocumentError(ErrorCode.PROCESSING_TIMEOUT, repr(exc))
+    return DocumentError(ErrorCode.INTERNAL_ERROR, repr(exc))

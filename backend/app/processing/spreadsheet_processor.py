@@ -15,6 +15,8 @@ from typing import Generator
 import pandas as pd
 from charset_normalizer import from_path
 
+from app.processing.errors import DocumentError, ErrorCode
+
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_ROWS = 5000   # rows rendered into the searchable text of a single sheet
@@ -35,10 +37,6 @@ class SheetResult:
 
     def __post_init__(self):
         self.char_count = len(self.text)
-
-
-class SpreadsheetProcessingError(Exception):
-    pass
 
 
 def _clean_headers(df: pd.DataFrame) -> pd.DataFrame:
@@ -113,7 +111,7 @@ def _read_csv(file_path: Path) -> pd.DataFrame:
         # sep=None + python engine sniffs , ; \t | delimiters
         return pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
     except Exception as e:
-        raise SpreadsheetProcessingError(f"Cannot parse CSV: {e}") from e
+        raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot parse CSV: {e}") from e
 
 
 def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None, None]:
@@ -128,13 +126,13 @@ def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None
         return
 
     if ext not in ("xlsx", "xls"):
-        raise SpreadsheetProcessingError(f"Unsupported spreadsheet type: {file_ext}")
+        raise DocumentError(ErrorCode.UNSUPPORTED_TYPE, f"Unsupported spreadsheet type: {file_ext}")
 
     engine = "openpyxl" if ext == "xlsx" else "xlrd"
     try:
         xls = pd.ExcelFile(file_path, engine=engine)
     except Exception as e:
-        raise SpreadsheetProcessingError(f"Cannot open workbook: {e}") from e
+        raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot open workbook: {e}") from e
 
     try:
         for idx, name in enumerate(xls.sheet_names, start=1):

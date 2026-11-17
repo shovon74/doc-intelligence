@@ -1,3 +1,5 @@
+import hashlib
+import io
 import shutil
 import uuid
 from pathlib import Path
@@ -8,12 +10,13 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from app.processing import pdf_processor, spreadsheet_processor
+from app.processing import pdf as pdf_processor
+from app.processing import spreadsheet as spreadsheet_processor
 from app.processing.errors import DocumentError, ErrorCode, get_error_info
-from app.processing.pdf_processor import stream_pdf_pages
+from app.processing.pdf import stream_pdf_pages
 from app.processing.pipeline import process_document
 from app.storage import file_handler
-from app.storage.file_handler import _resolve_mime
+from app.processing.detect import resolve_mime as _resolve_mime
 
 LONG_TEXT = "Invoice INV-001 total 120.00 EUR supplier ACME Ltd " * 3
 
@@ -145,6 +148,11 @@ def test_corrupt_workbook_raises(tmp_path):
     ("application/zip", "x.docx", "application/zip"),      # not allowed, stays rejected
     ("application/zip", "x.csv", "application/zip"),       # extension can't launder a zip
     ("image/x-tiff", "scan.TIF", "image/tiff"),
+    ("text/plain", "data.csv", "text/csv"),               # plain text is CSV only by extension
+    ("text/plain", "data.tsv", "text/csv"),
+    ("text/plain", "notes.txt", "text/plain"),            # stays rejected
+    ("text/plain", "fake.pdf", "text/plain"),
+    ("text/plain", "fake.xlsx", "text/plain"),
 ])
 def test_resolve_mime(detected, name, expected):
     assert _resolve_mime(detected, name) == expected
@@ -155,12 +163,12 @@ def test_save_upload_rejects_oversize_and_unsupported(tmp_path, monkeypatch):
     monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(file_handler, "MAX_BYTES", 10)
     with pytest.raises(DocumentError) as ei:
-        file_handler.save_upload(b"x" * 11, "a.pdf", MagicMock())
+        file_handler.save_upload(io.BytesIO(b"x" * 11), "a.pdf", MagicMock())
     assert ei.value.code is ErrorCode.FILE_TOO_LARGE
     monkeypatch.setattr(file_handler, "MAX_BYTES", 10**6)
     monkeypatch.setattr(file_handler, "_detect_mime", lambda p: "application/x-msdownload")
     with pytest.raises(DocumentError) as ei:
-        file_handler.save_upload(b"MZ....", "a.pdf", MagicMock())
+        file_handler.save_upload(io.BytesIO(b"MZ...."), "a.pdf", MagicMock())
     assert ei.value.code is ErrorCode.UNSUPPORTED_TYPE
     assert list(tmp_path.iterdir()) == []                  # temp dirs cleaned up
 
@@ -171,7 +179,7 @@ def test_save_upload_stores_and_detects_duplicates(tmp_path, monkeypatch):
     monkeypatch.setattr(file_handler, "_detect_mime", lambda p: "application/pdf")
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
-    saved = file_handler.save_upload(b"%PDF-1.4 data", "inv.pdf", db)
+    saved = file_handler.save_upload(io.BytesIO(b"%PDF-1.4 data"), "inv.pdf", db)
     assert not saved["is_duplicate"]
     assert Path(saved["stored_path"]).read_bytes() == b"%PDF-1.4 data"
     assert saved["stored_path"].endswith(f"{saved['document_id']}.pdf")
@@ -179,7 +187,7 @@ def test_save_upload_stores_and_detects_duplicates(tmp_path, monkeypatch):
     existing = MagicMock(id=uuid.uuid4(), stored_path="/x.pdf",
                          mime_type="application/pdf", file_ext="pdf")
     db.query.return_value.filter.return_value.first.return_value = existing
-    dup = file_handler.save_upload(b"%PDF-1.4 data", "again.pdf", db)
+    dup = file_handler.save_upload(io.BytesIO(b"%PDF-1.4 data"), "again.pdf", db)
     assert dup["is_duplicate"] and dup["document_id"] == str(existing.id)
     assert [p.name for p in tmp_path.iterdir()] == [Path(saved["stored_path"]).parent.name]
 
@@ -229,7 +237,7 @@ def _assert_friendly_failure(doc, code, secret=None):
 
 
 def _with_ocr(monkeypatch, ocr):
-    monkeypatch.setattr("app.processing.pipeline.image_processor", ocr)
+    monkeypatch.setattr("app.processing.pipeline.ocr", ocr)
 
 
 @pytest.mark.unit
@@ -326,7 +334,7 @@ def test_pipeline_unknown_document():
 def test_save_upload_rejects_zero_byte_file(tmp_path, monkeypatch):
     monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
     with pytest.raises(DocumentError) as ei:
-        file_handler.save_upload(b"", "empty.pdf", MagicMock())
+        file_handler.save_upload(io.BytesIO(b""), "empty.pdf", MagicMock())
     assert ei.value.code is ErrorCode.EMPTY_FILE
     assert list(tmp_path.iterdir()) == []          # nothing written to disk
 
@@ -398,7 +406,7 @@ def test_one_blank_page_among_text_pages_still_succeeds(tmp_path, monkeypatch):
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="tesseract not installed")
 def test_image_ocr_and_multipage_tiff(tmp_path):
     from PIL import ImageDraw, ImageFont
-    from app.processing import image_processor
+    from app.processing import image_preprocess, ocr
 
     def page(text):
         img = Image.new("RGB", (1200, 300), "white")
@@ -408,7 +416,128 @@ def test_image_ocr_and_multipage_tiff(tmp_path):
 
     f = tmp_path / "scan.tiff"
     page("INVOICE 4711").save(f, save_all=True, append_images=[page("TOTAL 99")])
-    assert image_processor.count_image_frames(f) == 2
-    texts = [image_processor.preprocess_and_ocr(fr).text
-             for fr in image_processor.iter_image_frames(f)]
+    assert image_preprocess.count_image_frames(f) == 2
+    texts = [ocr.preprocess_and_ocr(fr).text
+             for fr in image_preprocess.iter_image_frames(f)]
     assert "4711" in texts[0] and "99" in texts[1]
+
+
+# ---------------------------------------------------------------- streaming (2.4)
+class _CountingReader:
+    """File-like that yields a large payload lazily and records the biggest read."""
+
+    def __init__(self, total, chunk_byte=b"A"):
+        self.remaining, self.byte, self.max_read = total, chunk_byte, 0
+
+    def read(self, n=-1):
+        n = self.remaining if n is None or n < 0 else min(n, self.remaining)
+        self.max_read = max(self.max_read, n)
+        self.remaining -= n
+        return self.byte * n
+
+
+@pytest.mark.unit
+def test_save_upload_streams_large_file_and_hashes(tmp_path, monkeypatch):
+    monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(file_handler, "_detect_mime", lambda p: "application/pdf")
+    total = 30 * 1024 * 1024
+    monkeypatch.setattr(file_handler, "MAX_BYTES", total + 1)
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    reader = _CountingReader(total)
+    saved = file_handler.save_upload(reader, "big.pdf", db)
+    expected = hashlib.sha256(b"A" * total).hexdigest()
+    assert saved["sha256"] == expected
+    assert saved["size_bytes"] == total
+    assert Path(saved["stored_path"]).stat().st_size == total
+    assert reader.max_read <= file_handler.CHUNK_SIZE      # never read whole file at once
+
+
+@pytest.mark.unit
+def test_save_upload_aborts_oversize_stream_early(tmp_path, monkeypatch):
+    monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(file_handler, "MAX_BYTES", 100_000)
+    reader = _CountingReader(10 * 1024 * 1024)
+    with pytest.raises(DocumentError) as ei:
+        file_handler.save_upload(reader, "big.pdf", MagicMock())
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    assert reader.remaining > 9 * 1024 * 1024               # stopped reading early
+    assert list(tmp_path.iterdir()) == []
+
+
+# ---------------------------------------------------------------- resource limits (2.5)
+@pytest.mark.unit
+def test_pdf_over_max_pages_fails_file_too_large(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf_processor.settings, "MAX_PAGES", 3)
+    pdf = make_pdf(tmp_path / "long.pdf", ["x"] * 4)
+    for call in (lambda: list(stream_pdf_pages(pdf)), lambda: pdf_processor.get_page_count(pdf)):
+        with pytest.raises(DocumentError) as ei:
+            call()
+        assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    ok = make_pdf(tmp_path / "ok.pdf", ["x"] * 3)
+    assert pdf_processor.get_page_count(ok) == 3
+
+
+@pytest.mark.unit
+def test_pipeline_pdf_over_limit_marks_failed(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf_processor.settings, "MAX_PAGES", 2)
+    doc = _fake_doc(make_pdf(tmp_path / "long.pdf", [LONG_TEXT] * 3), "pdf")
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    _assert_friendly_failure(doc, ErrorCode.FILE_TOO_LARGE)
+
+
+@pytest.mark.unit
+def test_image_over_pixel_limit_fails_file_too_large(tmp_path, monkeypatch):
+    from app.processing import image_preprocess
+    f = tmp_path / "big.png"
+    Image.new("L", (200, 100), 255).save(f)
+    monkeypatch.setattr(image_preprocess.settings, "MAX_IMAGE_PIXELS", 10_000)
+    with pytest.raises(DocumentError) as ei:
+        image_preprocess.check_image_limits(f)
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    with pytest.raises(DocumentError) as ei:
+        list(image_preprocess.iter_image_frames(f))          # rejected before decoding
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    monkeypatch.setattr(image_preprocess.settings, "MAX_IMAGE_PIXELS", 20_000)
+    assert image_preprocess.check_image_limits(f) == 1
+
+
+@pytest.mark.unit
+def test_image_too_many_frames_fails(tmp_path, monkeypatch):
+    from app.processing import image_preprocess
+    f = tmp_path / "multi.tiff"
+    frames = [Image.new("L", (20, 20), 255) for _ in range(3)]
+    frames[0].save(f, save_all=True, append_images=frames[1:])
+    monkeypatch.setattr(image_preprocess.settings, "MAX_PAGES", 2)
+    with pytest.raises(DocumentError) as ei:
+        image_preprocess.count_image_frames(f)
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+
+
+def _csv_rows(n):
+    return "a,b\n" + "\n".join(f"{i},{i}" for i in range(n)) + "\n"
+
+
+@pytest.mark.unit
+def test_csv_over_row_limit_fails_file_too_large(tmp_path, monkeypatch):
+    monkeypatch.setattr(spreadsheet_processor.settings, "MAX_SHEET_ROWS", 5)
+    f = tmp_path / "rows.csv"
+    f.write_text(_csv_rows(6))
+    with pytest.raises(DocumentError) as ei:
+        list(spreadsheet_processor.stream_sheets(f, "csv"))
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE
+    f.write_text(_csv_rows(5))
+    (sheet,) = spreadsheet_processor.stream_sheets(f, "csv")
+    assert sheet.row_count == 5
+
+
+@pytest.mark.unit
+def test_xlsx_over_row_limit_fails_file_too_large(tmp_path, monkeypatch):
+    monkeypatch.setattr(spreadsheet_processor.settings, "MAX_SHEET_ROWS", 5)
+    f = tmp_path / "rows.xlsx"
+    pd.DataFrame({"a": range(6)}).to_excel(f, index=False)
+    with pytest.raises(DocumentError) as ei:
+        list(spreadsheet_processor.stream_sheets(f, "xlsx"))
+    assert ei.value.code is ErrorCode.FILE_TOO_LARGE

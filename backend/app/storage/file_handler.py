@@ -3,82 +3,36 @@ import logging
 import shutil
 import uuid
 from pathlib import Path
+from typing import BinaryIO
 
-import magic
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import Document
+from app.processing.detect import ALLOWED_MIME_TYPES
+from app.processing.detect import detect_mime as _detect_mime
+from app.processing.detect import resolve_mime as _resolve_mime
 from app.processing.errors import DocumentError, ErrorCode
 
 logger = logging.getLogger(__name__)
-
-# Allowed MIME types → canonical extension
-ALLOWED_MIME_TYPES: dict[str, str] = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/tiff": "tiff",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.ms-excel": "xls",
-    "text/csv": "csv",
-    "text/plain": "csv",  # treat plain text as csv
-}
 
 MAX_BYTES = settings.MAX_UPLOAD_MB * 1024 * 1024
 UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 
 
-# libmagic reports these containers/generic types for some valid uploads. They are
-# only accepted when the client-supplied extension agrees with the expected format.
-AMBIGUOUS_MIME_BY_EXT: dict[str, tuple[str, set[str]]] = {
-    "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-             {"application/zip", "application/octet-stream"}),
-    "xls": ("application/vnd.ms-excel",
-            {"application/x-ole-storage", "application/CDFV2", "application/cdfv2",
-             "application/octet-stream"}),
-    "csv": ("text/csv", {"application/csv", "application/vnd.ms-excel", "text/x-csv"}),
-    "tiff": ("image/tiff", {"image/x-tiff"}),
-}
-EXT_ALIASES = {"jpeg": "jpg", "tif": "tiff"}
-
-
-def _detect_mime(file_path: Path) -> str:
-    """Detect real MIME type from magic bytes, ignoring client extension."""
-    detected = magic.from_file(str(file_path), mime=True)
-    return detected
-
-
-def _resolve_mime(detected: str, original_filename: str) -> str:
-    """Map a libmagic result to an allowed MIME type, using the extension only to
-    disambiguate generic container types (never to override a clear detection)."""
-    if detected in ALLOWED_MIME_TYPES:
-        return detected
-    ext = Path(original_filename).suffix.lower().lstrip(".")
-    ext = EXT_ALIASES.get(ext, ext)
-    expected = AMBIGUOUS_MIME_BY_EXT.get(ext)
-    if expected and detected in expected[1]:
-        return expected[0]
-    return detected
-
-
-def _compute_sha256_streaming(file_path: Path) -> str:
-    """Compute SHA-256 by reading the already-saved file in chunks."""
-    hasher = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        while chunk := f.read(65536):
-            hasher.update(chunk)
-    return hasher.hexdigest()
+CHUNK_SIZE = 64 * 1024
 
 
 def save_upload(
-    file_bytes: bytes,
+    fileobj: BinaryIO,
     original_filename: str,
     db: Session,
     user_id: uuid.UUID | str | None = None,
 ) -> dict:
     """
-    Save uploaded file bytes, detect format, compute SHA-256, and check duplicates.
+    Stream an uploaded file-like object to disk in chunks, hashing (SHA-256) and
+    enforcing the size limit while streaming, so the upload is never held in memory.
+    Then detect the real format and check for duplicates.
     Duplicates are matched per user when ``user_id`` is given (so one tenant's upload
     never resolves to another tenant's document), otherwise globally.
 
@@ -91,23 +45,27 @@ def save_upload(
       - size_bytes (int)
       - is_duplicate (bool)
     """
-    size_bytes = len(file_bytes)
-    if size_bytes == 0:
-        raise DocumentError(ErrorCode.EMPTY_FILE, f"zero-byte upload '{original_filename}'")
-    if size_bytes > MAX_BYTES:
-        raise DocumentError(
-            ErrorCode.FILE_TOO_LARGE,
-            f"{size_bytes / 1024 / 1024:.1f} MB exceeds limit of {settings.MAX_UPLOAD_MB} MB",
-        )
-
-    # Write to a temp path for magic detection
     tmp_id = uuid.uuid4()
     tmp_dir = UPLOAD_DIR / str(tmp_id)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_path = tmp_dir / "upload.tmp"
 
     try:
-        tmp_path.write_bytes(file_bytes)
+        hasher = hashlib.sha256()
+        size_bytes = 0
+        with open(tmp_path, "wb") as out:
+            while chunk := fileobj.read(CHUNK_SIZE):
+                size_bytes += len(chunk)
+                if size_bytes > MAX_BYTES:
+                    raise DocumentError(
+                        ErrorCode.FILE_TOO_LARGE,
+                        f"exceeds limit of {settings.MAX_UPLOAD_MB} MB",
+                    )
+                hasher.update(chunk)
+                out.write(chunk)
+        if size_bytes == 0:
+            raise DocumentError(ErrorCode.EMPTY_FILE, f"zero-byte upload '{original_filename}'")
+        sha256 = hasher.hexdigest()
 
         # Magic byte MIME detection (ignore client extension)
         mime_type = _resolve_mime(_detect_mime(tmp_path), original_filename)
@@ -115,9 +73,6 @@ def save_upload(
             raise DocumentError(ErrorCode.UNSUPPORTED_TYPE, f"detected type '{mime_type}'")
 
         file_ext = ALLOWED_MIME_TYPES[mime_type]
-
-        # SHA-256 for duplicate detection
-        sha256 = _compute_sha256_streaming(tmp_path)
 
         # Check if file was already uploaded
         query = db.query(Document).filter(Document.sha256 == sha256)

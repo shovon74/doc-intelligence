@@ -43,6 +43,16 @@ def _open_pdf(file_path: Path) -> fitz.Document:
         if not doc.authenticate(""):
             doc.close()
             raise DocumentError(ErrorCode.ENCRYPTED_PDF, "PDF requires a password")
+    if doc.page_count == 0:
+        # e.g. a truncated file that PyMuPDF "repaired" down to nothing
+        doc.close()
+        raise DocumentError(ErrorCode.CORRUPT_FILE, "PDF has no readable pages")
+    if doc.page_count > settings.MAX_PAGES:
+        count = doc.page_count
+        doc.close()
+        raise DocumentError(
+            ErrorCode.FILE_TOO_LARGE, f"PDF has {count} pages, limit is {settings.MAX_PAGES}"
+        )
     return doc
 
 

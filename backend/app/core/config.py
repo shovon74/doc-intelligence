@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 100
     UPLOAD_DIR: str = "/data/uploads"
 
+    # Resource limits (reject abusive files before they exhaust memory/CPU)
+    MAX_PAGES: int = 1000                  # PDF pages / TIFF frames / spreadsheet sheets
+    MAX_IMAGE_PIXELS: int = 100_000_000    # decompression-bomb guard (width x height)
+    MAX_SHEET_ROWS: int = 200_000          # rows per spreadsheet sheet
+
     # LLM Providers
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None

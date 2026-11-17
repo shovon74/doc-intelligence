@@ -1,26 +1,46 @@
+"""Image loading, resource-limit checks and OpenCV preprocessing for OCR."""
 import logging
-import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 import cv2
 import numpy as np
-import pytesseract
 from PIL import Image, ImageSequence
 
 from app.core.config import settings
+from app.processing.errors import DocumentError, ErrorCode
 
 logger = logging.getLogger(__name__)
 
-OCR_LANGS = settings.OCR_LANGS
-
-
-@dataclass
-class OCRResult:
-    text: str
-    confidence: float   # 0.0 - 1.0
-    duration_ms: int
+def check_image_limits(file_path: Path) -> int:
+    """
+    Validate an image file against MAX_IMAGE_PIXELS / MAX_PAGES using only the header
+    (nothing is decoded), so a decompression bomb is rejected cheaply. Returns the
+    frame count. Raises DocumentError(FILE_TOO_LARGE) or CORRUPT_FILE.
+    """
+    try:
+        with Image.open(file_path) as pil:
+            frames = getattr(pil, "n_frames", 1)
+            if frames > settings.MAX_PAGES:
+                raise DocumentError(
+                    ErrorCode.FILE_TOO_LARGE,
+                    f"image has {frames} frames, limit is {settings.MAX_PAGES}",
+                )
+            for i in range(frames):
+                pil.seek(i)
+                w, h = pil.size
+                if w * h > settings.MAX_IMAGE_PIXELS:
+                    raise DocumentError(
+                        ErrorCode.FILE_TOO_LARGE,
+                        f"frame {i + 1} is {w}x{h} px, limit is {settings.MAX_IMAGE_PIXELS} px",
+                    )
+            return frames
+    except DocumentError:
+        raise
+    except Image.DecompressionBombError as e:
+        raise DocumentError(ErrorCode.FILE_TOO_LARGE, f"decompression bomb: {e}") from e
+    except Exception as e:
+        raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot read image: {e!r}") from e
 
 
 def _load_image_from_bytes(img_bytes: bytes) -> np.ndarray:
@@ -107,60 +127,13 @@ def _upscale_if_needed(img: np.ndarray) -> np.ndarray:
     return img
 
 
-def _run_tesseract(img: np.ndarray, langs: str = OCR_LANGS) -> tuple[str, float]:
-    """
-    Run Tesseract OCR once on a preprocessed image.
-    Returns (text, confidence) where confidence is 0.0-1.0.
-    Text is rebuilt from the word-level data so Tesseract only runs a single pass.
-    """
-    pil_img = Image.fromarray(img)
-    data = pytesseract.image_to_data(pil_img, lang=langs, output_type=pytesseract.Output.DICT)
-
-    lines: dict[tuple, list[str]] = {}
-    confidences: list[float] = []
-    for i, word in enumerate(data["text"]):
-        word = (word or "").strip()
-        try:
-            conf = float(data["conf"][i])
-        except (TypeError, ValueError):
-            continue
-        if conf < 0 or not word:  # -1 marks layout (non-word) rows
-            continue
-        confidences.append(conf)
-        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
-        lines.setdefault(key, []).append(word)
-
-    text = "\n".join(" ".join(words) for _, words in sorted(lines.items()))
-    avg_conf = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0
-    return text.strip(), round(avg_conf, 4)
-
-
-def preprocess_and_ocr(img: np.ndarray) -> OCRResult:
-    """
-    Full preprocessing pipeline: grayscale → deskew → denoise → upscale → OCR.
-    """
-    t_start = time.time()
-    gray = _to_grayscale(img)
-    gray = _deskew(gray)
-    gray = _denoise_and_threshold(gray)
-    gray = _upscale_if_needed(gray)
-    text, confidence = _run_tesseract(gray)
-    duration_ms = int((time.time() - t_start) * 1000)
-    return OCRResult(text=text, confidence=confidence, duration_ms=duration_ms)
-
-
-def ocr_from_path(file_path: Path) -> OCRResult:
-    """Entry point for single-frame image files (JPEG, PNG, TIFF first frame)."""
-    img = _load_image_from_path(file_path)
-    return preprocess_and_ocr(img)
-
-
 def iter_image_frames(file_path: Path) -> Iterator[np.ndarray]:
     """
     Yield each frame of an image as a BGR ndarray, one at a time.
     Multi-page TIFFs yield one frame per page; other formats yield one frame.
     (cv2.imread only reads the first TIFF page, so Pillow is used for frames.)
     """
+    check_image_limits(file_path)
     with Image.open(file_path) as pil:
         for frame in ImageSequence.Iterator(pil):
             rgb = np.array(frame.convert("RGB"))
@@ -168,15 +141,10 @@ def iter_image_frames(file_path: Path) -> Iterator[np.ndarray]:
 
 
 def count_image_frames(file_path: Path) -> int:
-    with Image.open(file_path) as pil:
-        return getattr(pil, "n_frames", 1)
+    return check_image_limits(file_path)
 
 
-def ocr_from_bytes(img_bytes: bytes) -> tuple[str, float]:
-    """
-    Entry point called by the PDF processor for scanned PDF pages.
-    Returns (text, confidence).
-    """
-    img = _load_image_from_bytes(img_bytes)
-    result = preprocess_and_ocr(img)
-    return result.text, result.confidence
+def preprocess(img: np.ndarray) -> np.ndarray:
+    """Standard variant: grayscale -> deskew -> denoise/threshold -> upscale."""
+    gray = _deskew(_to_grayscale(img))
+    return _upscale_if_needed(_denoise_and_threshold(gray))

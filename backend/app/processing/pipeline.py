@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Document, DocumentPage, ProcessingEvent
 from app.processing.errors import DocumentError, ErrorCode, get_error_info, to_document_error
-from app.processing import image_processor, pdf_processor, spreadsheet_processor
+from app.processing import image_preprocess, ocr, pdf, spreadsheet
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,9 @@ SHEET_EXTS = {"xlsx", "xls", "csv"}
 
 
 def _image_pages(path: Path) -> Iterator[dict]:
-    for n, frame in enumerate(image_processor.iter_image_frames(path), start=1):
+    for n, frame in enumerate(image_preprocess.iter_image_frames(path), start=1):
         try:
-            r = image_processor.preprocess_and_ocr(frame)
+            r = ocr.preprocess_and_ocr(frame)
             yield dict(page_number=n, text=r.text, source_type="ocr",
                        ocr_confidence=r.confidence, error=None)
         except Exception as e:
@@ -44,13 +44,13 @@ def _image_pages(path: Path) -> Iterator[dict]:
 
 
 def _pdf_pages(path: Path) -> Iterator[dict]:
-    for r in pdf_processor.stream_pdf_pages(path, ocr_processor=image_processor):
+    for r in pdf.stream_pdf_pages(path, ocr_processor=ocr):
         yield dict(page_number=r.page_number, text=r.text, source_type=r.source_type,
                    ocr_confidence=r.ocr_confidence, error=r.error)
 
 
 def _sheet_pages(path: Path, ext: str) -> Iterator[dict]:
-    for r in spreadsheet_processor.stream_sheets(path, ext):
+    for r in spreadsheet.stream_sheets(path, ext):
         yield dict(page_number=r.page_number, text=r.text, source_type="spreadsheet",
                    ocr_confidence=None, error=r.error)
 
@@ -59,11 +59,11 @@ def _plan(path: Path, ext: str) -> tuple[int, Iterator[dict]]:
     """Return (total_page_count, page iterator) for the file type."""
     try:
         if ext in PDF_EXTS:
-            return pdf_processor.get_page_count(path), _pdf_pages(path)
+            return pdf.get_page_count(path), _pdf_pages(path)
         if ext in IMAGE_EXTS:
-            return image_processor.count_image_frames(path), _image_pages(path)
+            return image_preprocess.count_image_frames(path), _image_pages(path)
         if ext in SHEET_EXTS:
-            return spreadsheet_processor.count_sheets(path, ext), _sheet_pages(path, ext)
+            return spreadsheet.count_sheets(path, ext), _sheet_pages(path, ext)
     except DocumentError:
         raise
     except Exception as e:

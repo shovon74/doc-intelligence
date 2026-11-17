@@ -15,6 +15,7 @@ from typing import Generator
 import pandas as pd
 from charset_normalizer import from_path
 
+from app.core.config import settings
 from app.processing.errors import DocumentError, ErrorCode
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,14 @@ def _render_text(sheet_name: str, df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def _check_row_limit(rows: int, where: str) -> None:
+    if rows > settings.MAX_SHEET_ROWS:
+        raise DocumentError(
+            ErrorCode.FILE_TOO_LARGE,
+            f"{where} has more than {settings.MAX_SHEET_ROWS} rows",
+        )
+
+
 def _sheet_result(page_number: int, sheet_name: str, raw: pd.DataFrame, t0: float) -> SheetResult:
     df = _clean_frame(raw)
     return SheetResult(
@@ -117,11 +126,15 @@ def _read_csv(file_path: Path) -> pd.DataFrame:
         raise DocumentError(ErrorCode.EMPTY_FILE, "CSV contains only whitespace")
     try:
         # sep=None + python engine sniffs , ; \t | delimiters
-        return pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
+        # read one row past the limit: enough to detect an oversized sheet, bounded memory
+        df = pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str,
+                         nrows=settings.MAX_SHEET_ROWS + 1)
     except pd.errors.EmptyDataError as e:
         raise DocumentError(ErrorCode.EMPTY_FILE, f"CSV has no data: {e}") from e
     except Exception as e:
         raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot parse CSV: {e}") from e
+    _check_row_limit(len(df), file_path.name)
+    return df
 
 
 def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None, None]:
@@ -143,14 +156,21 @@ def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None
         xls = pd.ExcelFile(file_path, engine=engine)
     except Exception as e:
         raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot open workbook: {e}") from e
+    if len(xls.sheet_names) > settings.MAX_PAGES:
+        xls.close()
+        raise DocumentError(ErrorCode.FILE_TOO_LARGE, f"{len(xls.sheet_names)} sheets")
 
     try:
         for idx, name in enumerate(xls.sheet_names, start=1):
             t0 = time.time()
             try:
                 # dtype=object keeps invoice numbers like "00123" intact
-                raw = pd.read_excel(xls, sheet_name=name, dtype=object)
+                raw = pd.read_excel(xls, sheet_name=name, dtype=object,
+                                    nrows=settings.MAX_SHEET_ROWS + 1)
+                _check_row_limit(len(raw), f"sheet '{name}'")
                 yield _sheet_result(idx, name, raw, t0)
+            except DocumentError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to parse sheet '{name}': {e}")
                 yield SheetResult(

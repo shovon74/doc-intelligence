@@ -22,12 +22,12 @@ def test_codes_match_plan_section_9():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("code", list(ErrorCode))
-def test_every_code_has_message_and_retryable_flag(code):
-    info = ERROR_INFO[code]
-    assert info.code == code
-    assert info.message.strip()
-    assert isinstance(info.retryable, bool)
+def test_every_code_has_message_and_retryable_flag():
+    for code in ErrorCode:
+        info = ERROR_INFO[code]
+        assert info.code == code, code
+        assert info.message.strip(), code
+        assert isinstance(info.retryable, bool), code
 
 
 @pytest.mark.unit
@@ -68,7 +68,7 @@ def test_to_document_error_never_leaks_raw_exception_text():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("code", list(ErrorCode))
-def test_every_message_tells_the_user_what_to_do(code):
-    msg = get_error_info(code).message
-    assert msg.endswith(".") and len(msg.split()) >= 6
+def test_every_message_tells_the_user_what_to_do():
+    for code in ErrorCode:
+        msg = get_error_info(code).message
+        assert msg.endswith(".") and len(msg.split()) >= 6, code

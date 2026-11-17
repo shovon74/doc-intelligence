@@ -17,28 +17,24 @@ def _only(path, ext, **kw):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("raw,expected", [
-    ("1,234.50", "1234.50"), ("1.234,50", "1234.50"), ("12,50", "12.50"), ("1,234", "1234"),
-    ("1,234,567", "1234567"), ("(45.00)", "-45.00"), ("$ 1,000", "1000"), ("EUR 99.9", "99.9"),
-    (12, "12"), (12.5, "12.5"),
-])
-def test_parse_decimal(raw, expected):
-    assert sm.parse_decimal(raw) == Decimal(expected)
+def test_parse_decimal():
+    cases = [
+        ("1,234.50", "1234.50"), ("1.234,50", "1234.50"), ("12,50", "12.50"), ("1,234", "1234"),
+        ("1,234,567", "1234567"), ("(45.00)", "-45.00"), ("$ 1,000", "1000"),
+        ("EUR 99.9", "99.9"), (12, "12"), (12.5, "12.5"),
+    ]
+    for raw, expected in cases:
+        assert sm.parse_decimal(raw) == Decimal(expected), raw
+    for raw in (None, "", "n/a", "abc", True):
+        assert sm.parse_decimal(raw) is None, raw
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("raw", [None, "", "n/a", "abc", True])
-def test_parse_decimal_rejects_non_numbers(raw):
-    assert sm.parse_decimal(raw) is None
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("raw,expected", [
-    ("2024-03-05", date(2024, 3, 5)), ("05.03.2024", date(2024, 3, 5)),
-    ("March 5, 2024", date(2024, 3, 5)), ("garbage", None), (None, None),
-])
-def test_parse_date(raw, expected):
-    assert sm.parse_date(raw) == expected
+def test_parse_date():
+    cases = [("2024-03-05", date(2024, 3, 5)), ("05.03.2024", date(2024, 3, 5)),
+             ("March 5, 2024", date(2024, 3, 5)), ("garbage", None), (None, None)]
+    for raw, expected in cases:
+        assert sm.parse_date(raw) == expected, raw
 
 
 @pytest.mark.unit

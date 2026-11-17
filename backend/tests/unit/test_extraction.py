@@ -34,22 +34,22 @@ def _fast_retries(monkeypatch):
 
 # ---------------------------------------------------------------- normalize
 @pytest.mark.unit
-@pytest.mark.parametrize("raw,expected", [
-    ("2024-03-05", date(2024, 3, 5)), ("25/03/2024", date(2024, 3, 25)),
-    ("03/25/2024", date(2024, 3, 25)), ("03/04/2024", None),      # ambiguous -> null
-    ("31/02/2024", None), ("March 5, 2024", date(2024, 3, 5)), (None, None), ("", None),
-])
-def test_parse_date_strict(raw, expected):
-    assert normalize.parse_date_strict(raw) == expected
+def test_parse_date_strict():
+    cases = [
+        ("2024-03-05", date(2024, 3, 5)), ("25/03/2024", date(2024, 3, 25)),
+        ("03/25/2024", date(2024, 3, 25)), ("03/04/2024", None),      # ambiguous -> null
+        ("31/02/2024", None), ("March 5, 2024", date(2024, 3, 5)), (None, None), ("", None),
+    ]
+    for raw, expected in cases:
+        assert normalize.parse_date_strict(raw) == expected, raw
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("raw,expected", [
-    ("EUR", "EUR"), ("usd", "USD"), ("€", "EUR"), ("£", "GBP"), ("$", None), ("euros", None),
-    (None, None),
-])
-def test_currency(raw, expected):
-    assert normalize.normalize_currency(raw) == expected
+def test_currency():
+    cases = [("EUR", "EUR"), ("usd", "USD"), ("€", "EUR"), ("£", "GBP"), ("$", None),
+             ("euros", None), (None, None)]
+    for raw, expected in cases:
+        assert normalize.normalize_currency(raw) == expected, raw
 
 
 @pytest.mark.unit

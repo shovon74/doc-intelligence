@@ -93,11 +93,11 @@ def test_lost_batch_counts_as_failed(tmp_path):
 
 # ---------------------------------------------------------------- retry policy
 @pytest.mark.unit
-@pytest.mark.parametrize("code", list(ErrorCode))
-def test_only_retryable_codes_retry(code):
-    err = DocumentError(code)
-    assert retry.should_retry(err, 0) is ERROR_INFO[code].retryable
-    assert not retry.should_retry(err, settings.TASK_MAX_RETRIES)      # retries exhausted
+def test_only_retryable_codes_retry():
+    for code in ErrorCode:
+        err = DocumentError(code)
+        assert retry.should_retry(err, 0) is ERROR_INFO[code].retryable, code
+        assert not retry.should_retry(err, settings.TASK_MAX_RETRIES), code   # retries exhausted
 
 
 @pytest.mark.unit

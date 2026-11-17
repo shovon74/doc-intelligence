@@ -92,6 +92,8 @@ def save_upload(
       - is_duplicate (bool)
     """
     size_bytes = len(file_bytes)
+    if size_bytes == 0:
+        raise DocumentError(ErrorCode.EMPTY_FILE, f"zero-byte upload '{original_filename}'")
     if size_bytes > MAX_BYTES:
         raise DocumentError(
             ErrorCode.FILE_TOO_LARGE,

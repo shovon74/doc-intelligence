@@ -321,6 +321,78 @@ def test_pipeline_unknown_document():
     assert ei.value.code is ErrorCode.INTERNAL_ERROR
 
 
+# ---------------------------------------------------------------- empty / no-text (2.3)
+@pytest.mark.unit
+def test_save_upload_rejects_zero_byte_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(file_handler, "UPLOAD_DIR", tmp_path)
+    with pytest.raises(DocumentError) as ei:
+        file_handler.save_upload(b"", "empty.pdf", MagicMock())
+    assert ei.value.code is ErrorCode.EMPTY_FILE
+    assert list(tmp_path.iterdir()) == []          # nothing written to disk
+
+
+@pytest.mark.unit
+def test_pipeline_zero_byte_stored_file_marks_failed(tmp_path):
+    f = tmp_path / "empty.pdf"
+    f.write_bytes(b"")
+    doc = _fake_doc(f, "pdf")
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.EMPTY_FILE
+    _assert_friendly_failure(doc, ErrorCode.EMPTY_FILE, secret="empty.pdf")
+
+
+@pytest.mark.unit
+def test_csv_with_only_whitespace_is_empty_file(tmp_path):
+    f = tmp_path / "blank.csv"
+    f.write_text("\n\n  \n")
+    with pytest.raises(DocumentError) as ei:
+        list(spreadsheet_processor.stream_sheets(f, "csv"))
+    assert ei.value.code is ErrorCode.EMPTY_FILE
+
+
+@pytest.mark.unit
+def test_pipeline_blank_pdf_without_any_text_is_no_text_found(tmp_path, monkeypatch):
+    doc = _fake_doc(make_pdf(tmp_path / "blank.pdf", ["", ""]), "pdf")
+    db = _db_for(doc)
+    _with_ocr(monkeypatch, FakeOCR(text=""))           # OCR finds nothing either
+    with pytest.raises(DocumentError) as ei:
+        process_document(db, doc.id)
+    assert ei.value.code is ErrorCode.NO_TEXT_FOUND
+    _assert_friendly_failure(doc, ErrorCode.NO_TEXT_FOUND)
+    assert db.add_all.called                            # pages kept for inspection
+
+
+@pytest.mark.unit
+def test_pipeline_header_only_csv_is_no_text_found(tmp_path):
+    f = tmp_path / "headers.csv"
+    f.write_text("invoice,total\n")
+    doc = _fake_doc(f, "csv")
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.NO_TEXT_FOUND
+
+
+@pytest.mark.unit
+def test_pipeline_workbook_with_only_empty_sheets_is_no_text_found(tmp_path):
+    f = tmp_path / "empty.xlsx"
+    with pd.ExcelWriter(f) as w:
+        pd.DataFrame().to_excel(w, sheet_name="One", index=False)
+        pd.DataFrame().to_excel(w, sheet_name="Two", index=False)
+    doc = _fake_doc(f, "xlsx")
+    with pytest.raises(DocumentError) as ei:
+        process_document(_db_for(doc), doc.id)
+    assert ei.value.code is ErrorCode.NO_TEXT_FOUND
+
+
+@pytest.mark.unit
+def test_one_blank_page_among_text_pages_still_succeeds(tmp_path, monkeypatch):
+    doc = _fake_doc(make_pdf(tmp_path / "ok.pdf", [LONG_TEXT, ""]), "pdf")
+    _with_ocr(monkeypatch, FakeOCR(text=""))
+    result = process_document(_db_for(doc), doc.id)
+    assert result["pages"] == 2 and doc.status == "extracting"
+
+
 # ---------------------------------------------------------------- OCR (needs tesseract)
 @pytest.mark.unit
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="tesseract not installed")

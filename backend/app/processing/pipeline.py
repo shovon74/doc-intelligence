@@ -116,12 +116,16 @@ def process_document(
         if not path.is_file():
             raise DocumentError(ErrorCode.INTERNAL_ERROR, f"Stored file not found: {doc.stored_path}")
 
+        if path.stat().st_size == 0:
+            raise DocumentError(ErrorCode.EMPTY_FILE, f"Stored file is zero bytes: {path.name}")
+
         ext = doc.file_ext.lower().lstrip(".")
         total, pages = _plan(path, ext)
         doc.page_count = total
         db.commit()
 
         done = failed = 0
+        has_text = False
         batch: list[DocumentPage] = []
 
         def flush() -> None:
@@ -135,6 +139,7 @@ def process_document(
         for p in pages:
             done += 1
             failed += bool(p["error"])
+            has_text = has_text or bool(p["text"].strip())
             batch.append(DocumentPage(
                 document_id=doc_id,
                 page_number=p["page_number"],
@@ -152,6 +157,9 @@ def process_document(
         if total and failed == total:
             code = ErrorCode.CORRUPT_FILE if ext in SHEET_EXTS else ErrorCode.OCR_FAILED
             raise DocumentError(code, f"All {total} pages failed to process")
+        if not has_text:
+            # Pages stay stored for inspection; the document itself is marked failed.
+            raise DocumentError(ErrorCode.NO_TEXT_FOUND, f"{done} page(s) processed, no text")
 
         ms = int((time.time() - t_start) * 1000)
         doc.status = "extracting"

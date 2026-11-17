@@ -92,7 +92,7 @@ def _sheet_result(page_number: int, sheet_name: str, raw: pd.DataFrame, t0: floa
     return SheetResult(
         page_number=page_number,
         sheet_name=sheet_name,
-        text=_render_text(sheet_name, df) if not df.empty else f"Sheet: {sheet_name}",
+        text=_render_text(sheet_name, df) if not df.empty else "",   # empty sheet has no text
         columns=list(df.columns),
         rows=_json_safe_records(df),
         row_count=len(df),
@@ -105,11 +105,21 @@ def _detect_encoding(file_path: Path) -> str:
     return best.encoding if best else "utf-8"
 
 
+def _is_blank(file_path: Path, encoding: str) -> bool:
+    """True if the file holds only whitespace. Stops at the first non-blank line."""
+    with open(file_path, encoding=encoding, errors="replace") as f:
+        return not any(line.strip() for line in f)
+
+
 def _read_csv(file_path: Path) -> pd.DataFrame:
     encoding = _detect_encoding(file_path)
+    if _is_blank(file_path, encoding):
+        raise DocumentError(ErrorCode.EMPTY_FILE, "CSV contains only whitespace")
     try:
         # sep=None + python engine sniffs , ; \t | delimiters
         return pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
+    except pd.errors.EmptyDataError as e:
+        raise DocumentError(ErrorCode.EMPTY_FILE, f"CSV has no data: {e}") from e
     except Exception as e:
         raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot parse CSV: {e}") from e
 

@@ -33,12 +33,14 @@ def process_document_task(self, document_id: str):
         try:
             plan = pipeline.start_document(db, document_id, will_retry(retries))
             if not pipeline.is_batchable(plan.ext, plan.total):
-                return pipeline.process_planned(
+                result = pipeline.process_planned(
                     db, document_id, plan,
                     on_progress=lambda pct: self.update_state(state="PROGRESS",
                                                               meta={"progress": pct}),
                     will_retry=will_retry(retries),
                 )
+                extract_document_task.delay(document_id)       # next stage
+                return result
         except DocumentError as err:
             if should_retry(err, retries):
                 raise self.retry(exc=err, countdown=backoff_seconds(retries))
@@ -78,8 +80,30 @@ def finish_document_task(results: list[dict], document_id: str):
 
     db = SessionLocal()
     try:
-        return pipeline.finish_document(db, document_id, results)
+        out = pipeline.finish_document(db, document_id, results)
+        extract_document_task.delay(document_id)               # next stage
+        return out
     except DocumentError as err:
         return {"document_id": document_id, "failed": True, "code": err.code.value}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.extract_document", bind=True)
+def extract_document_task(self, document_id: str):
+    """Extraction stage: pages -> invoices. Retryable provider errors retry with backoff."""
+    from app.db.session import SessionLocal
+    from app.extraction.stage import extract_document
+    from app.processing.errors import DocumentError
+
+    db = SessionLocal()
+    try:
+        retries = self.request.retries
+        try:
+            return extract_document(db, document_id, will_retry=will_retry(retries))
+        except DocumentError as err:
+            if should_retry(err, retries):
+                raise self.retry(exc=err, countdown=backoff_seconds(retries))
+            raise
     finally:
         db.close()

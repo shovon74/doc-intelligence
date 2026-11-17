@@ -94,9 +94,10 @@ def _page_error_message(source_type: str) -> str:
     return get_error_info(code).message
 
 
-def _event(db: Session, doc_id: uuid.UUID, status: str, message: str | None = None,
-           duration_ms: int | None = None, details: dict | None = None) -> None:
-    db.add(ProcessingEvent(document_id=doc_id, stage="processing", status=status,
+def add_event(db: Session, doc_id: uuid.UUID, status: str, message: str | None = None,
+           duration_ms: int | None = None, details: dict | None = None,
+           stage: str = "processing") -> None:
+    db.add(ProcessingEvent(document_id=doc_id, stage=stage, status=status,
                            message=message, duration_ms=duration_ms, details=details))
 
 
@@ -117,7 +118,7 @@ class Plan:
     ext: str
 
 
-def _run_stage(db: Session, doc_id: uuid.UUID, will_retry: bool, fn):
+def run_stage(db: Session, doc_id: uuid.UUID, will_retry: bool, fn, stage: str = "processing"):
     """
     Run one pipeline step. On failure the document is marked failed with the friendly
     message for the error code and the DocumentError is re-raised. If the error is
@@ -135,12 +136,13 @@ def _run_stage(db: Session, doc_id: uuid.UUID, will_retry: bool, fn):
         details = {"code": err.code.value, "retryable": err.retryable, "detail": err.detail}
         doc = db.get(Document, doc_id)
         if will_retry and err.retryable:
-            doc.status, doc.error_code, doc.error_message = "processing", None, None
-            _event(db, doc_id, "retried", f"Will retry: {err.code.value}", ms, details)
+            doc.status = "extracting" if stage == "extraction" else "processing"
+            doc.error_code = doc.error_message = None
+            add_event(db, doc_id, "retried", f"Will retry: {err.code.value}", ms, details, stage)
         else:
             doc.status = "failed"
             doc.error_code, doc.error_message = err.code.value, err.message
-            _event(db, doc_id, "failed", err.message, ms, details)
+            add_event(db, doc_id, "failed", err.message, ms, details, stage)
         db.commit()
         raise err from e
 
@@ -156,7 +158,7 @@ def start_document(db: Session, document_id: uuid.UUID | str, will_retry: bool =
     doc.error_code = doc.error_message = None
     # idempotent re-run: drop pages from any earlier attempt
     db.query(DocumentPage).filter(DocumentPage.document_id == doc_id).delete()
-    _event(db, doc_id, "started", f"Processing {doc.original_filename}")
+    add_event(db, doc_id, "started", f"Processing {doc.original_filename}")
     db.commit()
 
     def work() -> Plan:
@@ -170,7 +172,7 @@ def start_document(db: Session, document_id: uuid.UUID | str, will_retry: bool =
         db.commit()
         return Plan(total=doc.page_count, ext=ext)
 
-    return _run_stage(db, doc_id, will_retry, work)
+    return run_stage(db, doc_id, will_retry, work)
 
 
 def process_pages(
@@ -284,12 +286,12 @@ def finish_document(db: Session, document_id: uuid.UUID | str, results: list[dic
         mappings = [m for r in results for m in r["mappings"]]
         if mappings:
             details["sheet_mappings"] = mappings
-        _event(db, doc_id, "succeeded", f"{done - failed}/{done} pages processed", ms, details)
+        add_event(db, doc_id, "succeeded", f"{done - failed}/{done} pages processed", ms, details)
         db.commit()
         return {"document_id": str(doc_id), "pages": done, "failed_pages": failed,
                 "duration_ms": ms}
 
-    return _run_stage(db, doc_id, False, work)
+    return run_stage(db, doc_id, False, work)
 
 
 def process_planned(db: Session, document_id: uuid.UUID | str, plan: Plan,
@@ -297,7 +299,7 @@ def process_planned(db: Session, document_id: uuid.UUID | str, plan: Plan,
                     will_retry: bool = False) -> dict:
     """Process every page of an already started document in this process, then finish it."""
     doc_id = uuid.UUID(str(document_id))
-    result = _run_stage(db, doc_id, will_retry, lambda: process_pages(
+    result = run_stage(db, doc_id, will_retry, lambda: process_pages(
         db, doc_id, 1, plan.total, plan.total, on_progress=on_progress))
     return finish_document(db, doc_id, [result])
 
@@ -314,7 +316,7 @@ def process_document(
     On success the document is left in status "extracting" (next stage's input).
     On failure the document is marked "failed" with error_code/error_message and
     the DocumentError is re-raised, unless the error is retryable and ``will_retry``
-    is set (see ``_run_stage``). Returns a small summary dict.
+    is set (see ``run_stage``). Returns a small summary dict.
 
     The stored error_message is always the friendly text for the error code;
     technical detail goes only to the log and the processing-event details.

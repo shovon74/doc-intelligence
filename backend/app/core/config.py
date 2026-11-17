@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     MAX_IMAGE_PIXELS: int = 100_000_000    # decompression-bomb guard (width x height)
     MAX_SHEET_ROWS: int = 200_000          # rows per spreadsheet sheet
 
+    # Large-PDF batching and task retries
+    PAGE_BATCH_SIZE: int = 20              # pages per Celery batch task / DB flush
+    TASK_MAX_RETRIES: int = 3              # retries for retryable errors only
+    TASK_RETRY_BACKOFF_SECONDS: int = 5    # base delay; doubles each retry, capped at 300 s
+
     # LLM Providers
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None

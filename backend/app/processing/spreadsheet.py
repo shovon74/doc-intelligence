@@ -9,6 +9,7 @@ fields directly instead of sending the sheet through an LLM.
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Generator
 
@@ -17,10 +18,13 @@ from charset_normalizer import from_path
 
 from app.core.config import settings
 from app.processing.errors import DocumentError, ErrorCode
+from app.processing.sheet_mapping import LlmMapper, SheetExtraction, count_header_matches, extract_from_rows
 
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_ROWS = 5000   # rows rendered into the searchable text of a single sheet
+HEADER_SCAN_ROWS = 30  # how far down to look for the header row
+CSV_MAX_COLUMNS = 100  # fixed column names let ragged CSV rows (title lines) parse
 
 
 @dataclass
@@ -32,6 +36,8 @@ class SheetResult:
     columns: list[str] = field(default_factory=list)
     rows: list[dict] = field(default_factory=list)   # JSON-safe records
     row_count: int = 0
+    header_row: int = 0              # 0-indexed position of the detected header row
+    extraction: SheetExtraction | None = None   # heuristic invoice mapping
     char_count: int = 0
     duration_ms: int = 0
     error: str | None = None
@@ -55,10 +61,29 @@ def _clean_headers(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _clean_frame(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.dropna(how="all").dropna(axis=1, how="all")
-    df = _clean_headers(df)
-    return df.reset_index(drop=True)
+def detect_header_row(raw: pd.DataFrame) -> int:
+    """
+    Index of the header row in a header-less frame. Picks the row (within the first
+    HEADER_SCAN_ROWS) with the most recognisable invoice column names; if no row has
+    at least two, the first row is the header. Rows above it (titles) are discarded.
+    """
+    best, best_score = 0, 1
+    for i in range(min(len(raw), HEADER_SCAN_ROWS)):
+        score = count_header_matches(raw.iloc[i].tolist())
+        if score > best_score:
+            best, best_score = i, score
+    return best
+
+
+def _clean_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Header-less frame -> (frame with detected header applied, header row index)."""
+    raw = raw.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    if raw.empty:
+        return raw, 0
+    h = detect_header_row(raw)
+    body = raw.iloc[h + 1:].copy()
+    body.columns = [None if pd.isna(v) else v for v in raw.iloc[h].tolist()]
+    return _clean_headers(body).reset_index(drop=True), h
 
 
 def _json_safe_records(df: pd.DataFrame) -> list[dict]:
@@ -69,8 +94,10 @@ def _json_safe_records(df: pd.DataFrame) -> list[dict]:
         for k, v in rec.items():
             if pd.isna(v):
                 clean[k] = None
-            elif isinstance(v, pd.Timestamp):
-                clean[k] = v.date().isoformat() if v.time() == pd.Timestamp(0).time() else v.isoformat()
+            elif isinstance(v, datetime):    # also covers pd.Timestamp
+                clean[k] = v.date().isoformat() if v.time() == datetime.min.time() else v.isoformat()
+            elif isinstance(v, date):
+                clean[k] = v.isoformat()
             elif hasattr(v, "item"):          # numpy scalar -> python scalar
                 clean[k] = v.item()
             else:
@@ -96,15 +123,19 @@ def _check_row_limit(rows: int, where: str) -> None:
         )
 
 
-def _sheet_result(page_number: int, sheet_name: str, raw: pd.DataFrame, t0: float) -> SheetResult:
-    df = _clean_frame(raw)
+def _sheet_result(page_number: int, sheet_name: str, raw: pd.DataFrame, t0: float,
+                  llm_mapper: LlmMapper | None = None) -> SheetResult:
+    df, header_row = _clean_frame(raw)
+    rows = _json_safe_records(df)
     return SheetResult(
         page_number=page_number,
         sheet_name=sheet_name,
         text=_render_text(sheet_name, df) if not df.empty else "",   # empty sheet has no text
         columns=list(df.columns),
-        rows=_json_safe_records(df),
+        rows=rows,
         row_count=len(df),
+        header_row=header_row,
+        extraction=extract_from_rows(list(df.columns), rows, llm_mapper, sheet_name) if rows else None,
         duration_ms=int((time.time() - t0) * 1000),
     )
 
@@ -120,24 +151,43 @@ def _is_blank(file_path: Path, encoding: str) -> bool:
         return not any(line.strip() for line in f)
 
 
+def _sniff_delimiter(file_path: Path, encoding: str) -> str:
+    """
+    Pick the delimiter that splits the most lines into the same number of fields. Robust to
+    title lines above the header, which fool csv.Sniffer.
+    """
+    with open(file_path, encoding=encoding, errors="replace") as f:
+        lines = [ln for ln in (next(f, "") for _ in range(60)) if ln.strip()]
+    best, best_score = ",", 0
+    for d in (",", ";", "	", "|"):
+        counts = [ln.count(d) for ln in lines]
+        modal = max(set(counts), key=counts.count) if counts else 0
+        score = modal * counts.count(modal) if modal else 0
+        if score > best_score:
+            best, best_score = d, score
+    return best
+
+
 def _read_csv(file_path: Path) -> pd.DataFrame:
     encoding = _detect_encoding(file_path)
     if _is_blank(file_path, encoding):
         raise DocumentError(ErrorCode.EMPTY_FILE, "CSV contains only whitespace")
     try:
-        # sep=None + python engine sniffs , ; \t | delimiters
         # read one row past the limit: enough to detect an oversized sheet, bounded memory
-        df = pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str,
-                         nrows=settings.MAX_SHEET_ROWS + 1)
+        df = pd.read_csv(file_path, sep=_sniff_delimiter(file_path, encoding),
+                         encoding=encoding, dtype=str,
+                         header=None, names=range(CSV_MAX_COLUMNS),
+                         nrows=settings.MAX_SHEET_ROWS + 1 + HEADER_SCAN_ROWS)
     except pd.errors.EmptyDataError as e:
         raise DocumentError(ErrorCode.EMPTY_FILE, f"CSV has no data: {e}") from e
     except Exception as e:
         raise DocumentError(ErrorCode.CORRUPT_FILE, f"Cannot parse CSV: {e}") from e
-    _check_row_limit(len(df), file_path.name)
+    _check_row_limit(len(df.dropna(how="all")) - 1, file_path.name)   # minus the header row
     return df
 
 
-def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None, None]:
+def stream_sheets(file_path: Path, file_ext: str,
+                  llm_mapper: LlmMapper | None = None) -> Generator[SheetResult, None, None]:
     """
     Yield one SheetResult per sheet (one for CSV). A sheet that fails to parse is
     yielded with ``error`` set rather than aborting the remaining sheets.
@@ -145,7 +195,7 @@ def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None
     ext = file_ext.lower().lstrip(".")
     if ext == "csv":
         t0 = time.time()
-        yield _sheet_result(1, file_path.stem, _read_csv(file_path), t0)
+        yield _sheet_result(1, file_path.stem, _read_csv(file_path), t0, llm_mapper)
         return
 
     if ext not in ("xlsx", "xls"):
@@ -165,10 +215,10 @@ def stream_sheets(file_path: Path, file_ext: str) -> Generator[SheetResult, None
             t0 = time.time()
             try:
                 # dtype=object keeps invoice numbers like "00123" intact
-                raw = pd.read_excel(xls, sheet_name=name, dtype=object,
-                                    nrows=settings.MAX_SHEET_ROWS + 1)
-                _check_row_limit(len(raw), f"sheet '{name}'")
-                yield _sheet_result(idx, name, raw, t0)
+                raw = pd.read_excel(xls, sheet_name=name, dtype=object, header=None,
+                                    nrows=settings.MAX_SHEET_ROWS + 1 + HEADER_SCAN_ROWS)
+                _check_row_limit(len(raw.dropna(how="all")) - 1, f"sheet '{name}'")
+                yield _sheet_result(idx, name, raw, t0, llm_mapper)
             except DocumentError:
                 raise
             except Exception as e:

@@ -284,7 +284,7 @@ def test_pipeline_unexpected_exception_becomes_friendly_internal_error(tmp_path,
     def boom(*a, **k):
         raise KeyError("/srv/secret/internal/path")
 
-    monkeypatch.setattr("app.processing.pipeline._plan", boom)
+    monkeypatch.setattr("app.processing.pipeline._count_pages", boom)
     with pytest.raises(DocumentError) as ei:
         process_document(db, doc.id)
     assert ei.value.code is ErrorCode.INTERNAL_ERROR

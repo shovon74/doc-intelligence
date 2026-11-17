@@ -68,6 +68,8 @@ def _ocr_page(page: fitz.Page, ocr_processor) -> tuple[str, float]:
 def stream_pdf_pages(
     file_path: Path,
     ocr_processor=None,
+    first_page: int = 1,
+    last_page: int | None = None,
 ) -> Generator[PageResult, None, None]:
     """
     Stream PDF pages one at a time (bounded memory).
@@ -77,6 +79,8 @@ def stream_pdf_pages(
     ``ocr_from_bytes(bytes) -> (text, confidence)``). A failure on one page is
     reported on that PageResult and does not abort the document.
 
+    ``first_page``/``last_page`` (1-indexed, inclusive) select a batch of pages.
+
     Raises DocumentError (CORRUPT_FILE / ENCRYPTED_PDF) if the file cannot be opened.
     """
     doc = _open_pdf(file_path)
@@ -84,7 +88,8 @@ def stream_pdf_pages(
         total_pages = doc.page_count
         logger.info(f"PDF opened: {file_path.name}, pages={total_pages}")
 
-        for page_num in range(total_pages):
+        last = min(last_page or total_pages, total_pages)
+        for page_num in range(max(first_page, 1) - 1, last):
             t_start = time.time()
             page_number = page_num + 1  # 1-indexed
             source_type = "digital"

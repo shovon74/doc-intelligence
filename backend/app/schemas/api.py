@@ -141,6 +141,9 @@ class InvoiceOut(InvoiceSummary):
     field_evidence: dict[str, Any] | None
     provider: str | None
     model: str | None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    latency_ms: int | None = None
     line_items: list[LineItemOut] = []
     issues: list[IssueOut] = Field([], validation_alias="validation_issues")
     corrections: list[CorrectionOut] = []

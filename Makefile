@@ -22,7 +22,9 @@ test-cov:
 	docker compose run --rm api pytest --cov=app --cov-report=term-missing --cov-report=html:docs/test-results/htmlcov tests/
 
 eval:
+	docker compose run --rm api python eval/generate_dataset.py
 	docker compose run --rm api python eval/run_eval.py
+	python backend/eval/make_report.py
 
 migrate:
 	docker compose run --rm api alembic upgrade head

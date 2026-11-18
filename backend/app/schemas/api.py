@@ -151,6 +151,23 @@ class DocumentDetail(DocumentOut):
     events: list[EventOut] = []
 
 
+class PageTextOut(ORM):
+    page_number: int
+    source_type: str
+    text: str
+    ocr_confidence: float | None
+
+
+class ResultOut(BaseModel):
+    document: DocumentOut
+    invoices: list[InvoiceOut]
+    pages: list[PageTextOut] | None = None
+
+
+class ReprocessFailedOut(BaseModel):
+    requeued: list[uuid.UUID]
+
+
 class UploadedOut(BaseModel):
     id: uuid.UUID
     filename: str

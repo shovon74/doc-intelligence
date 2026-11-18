@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import CurrentUser, Page, get_current_user, pagination
 from app.api.v1.documents import IN_FLIGHT
-from app.db.models import Correction, Document, Invoice
+from app.db.models import Correction, Document, Invoice, ValidationIssue
 from app.db.session import get_db
 from app.extraction.normalize import norm_invoice_number, norm_supplier
 from app.schemas.api import InvoiceOut, InvoiceSummary, InvoiceUpdate, PageOut
@@ -118,4 +118,31 @@ def correct_invoice(invoice_id: uuid.UUID, body: InvoiceUpdate, db: Session = De
         engine.settle_document(db, doc)
         db.commit()
         db.refresh(inv, ["validation_issues", "corrections", "line_items"])
+    return invoice_out(inv)
+
+
+@router.post("/{invoice_id}/resolve-issue/{issue_id}", response_model=InvoiceOut,
+             summary="Acknowledge an issue; the invoice stops being flagged once none are open")
+def resolve_issue(invoice_id: uuid.UUID, issue_id: uuid.UUID, db: Session = Depends(get_db),
+                  user: CurrentUser = Depends(get_current_user)):
+    inv = _owned(db, user, invoice_id)
+    issue = db.scalar(select(ValidationIssue).where(ValidationIssue.id == issue_id,
+                                                    ValidationIssue.invoice_id == inv.id))
+    if issue is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Issue not found.")
+    doc = db.get(Document, inv.document_id)
+    if doc.status in IN_FLIGHT:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "This document is still being processed. Wait for it to finish.")
+    issue.resolved = True
+    db.flush()
+    open_issues = [i for i in db.scalars(select(ValidationIssue).where(
+        ValidationIssue.invoice_id == inv.id, ValidationIssue.resolved.is_(False)))
+        if i.severity in (engine.ERROR, engine.WARNING)]
+    reasons = engine._review_reasons(inv, open_issues)
+    inv.review_reason = reasons or None
+    inv.needs_review = bool(reasons)
+    engine.settle_document(db, doc)
+    db.commit()
+    db.refresh(inv, ["validation_issues", "corrections", "line_items"])
     return invoice_out(inv)

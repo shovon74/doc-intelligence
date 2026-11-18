@@ -135,8 +135,11 @@ def run_stage(db: Session, doc_id: uuid.UUID, will_retry: bool, fn, stage: str =
         ms = int((time.time() - t0) * 1000)
         details = {"code": err.code.value, "retryable": err.retryable, "detail": err.detail}
         doc = db.get(Document, doc_id)
+        if doc is None:
+            raise err from e                 # nothing to mark
         if will_retry and err.retryable:
-            doc.status = "extracting" if stage == "extraction" else "processing"
+            doc.status = {"extraction": "extracting", "validation": "validating"}.get(
+                stage, "processing")
             doc.error_code = doc.error_message = None
             add_event(db, doc_id, "retried", f"Will retry: {err.code.value}", ms, details, stage)
         else:

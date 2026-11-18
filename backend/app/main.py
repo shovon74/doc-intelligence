@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.api.v1.crosscheck import router as crosscheck_router
 from app.api.v1.health import router as health_router
 
 setup_logging()
@@ -45,6 +46,7 @@ async def correlation_id_middleware(request: Request, call_next):
 
 # Include Routers
 app.include_router(health_router, prefix="/api/v1", tags=["System & Health"])
+app.include_router(crosscheck_router, prefix="/api/v1", tags=["Cross-check"])
 
 
 @app.get("/", include_in_schema=False)

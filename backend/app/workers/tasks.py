@@ -100,7 +100,29 @@ def extract_document_task(self, document_id: str):
     try:
         retries = self.request.retries
         try:
-            return extract_document(db, document_id, will_retry=will_retry(retries))
+            result = extract_document(db, document_id, will_retry=will_retry(retries))
+            validate_document_task.delay(document_id)              # next stage
+            return result
+        except DocumentError as err:
+            if should_retry(err, retries):
+                raise self.retry(exc=err, countdown=backoff_seconds(retries))
+            raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.validate_document", bind=True)
+def validate_document_task(self, document_id: str):
+    """Validation stage: rules + duplicates -> issues, review flags, final status."""
+    from app.db.session import SessionLocal
+    from app.processing.errors import DocumentError
+    from app.validation.engine import validate_document
+
+    db = SessionLocal()
+    try:
+        retries = self.request.retries
+        try:
+            return validate_document(db, document_id, will_retry=will_retry(retries))
         except DocumentError as err:
             if should_retry(err, retries):
                 raise self.retry(exc=err, countdown=backoff_seconds(retries))

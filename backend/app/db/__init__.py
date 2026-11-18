@@ -7,6 +7,7 @@ from app.db.models import (
     LineItem,
     ValidationIssue,
     Correction,
+    Crosscheck,
     ProcessingEvent,
     DocumentChunk,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "LineItem",
     "ValidationIssue",
     "Correction",
+    "Crosscheck",
     "ProcessingEvent",
     "DocumentChunk",
 ]

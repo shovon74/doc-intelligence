@@ -74,3 +74,28 @@ def test_extraction_task_retries_only_retryable_errors(monkeypatch):
     with pytest.raises(DocumentError):
         tasks.extract_document_task.run(str(uuid.uuid4()))
     retry.assert_not_called()
+
+
+@pytest.mark.unit
+def test_extraction_chains_to_validation_and_validation_retries_only_retryable(monkeypatch):
+    monkeypatch.setattr("app.db.session.SessionLocal", lambda: MagicMock())
+    delay = MagicMock()
+    monkeypatch.setattr(tasks.validate_document_task, "delay", delay)
+    monkeypatch.setattr("app.extraction.stage.extract_document",
+                        MagicMock(return_value={"invoices": 1}))
+    doc_id = str(uuid.uuid4())
+    assert tasks.extract_document_task.run(doc_id) == {"invoices": 1}
+    delay.assert_called_once_with(doc_id)
+
+    retry = MagicMock(side_effect=_Retried)
+    monkeypatch.setattr(tasks.validate_document_task, "retry", retry)
+    monkeypatch.setattr("app.validation.engine.validate_document",
+                        MagicMock(side_effect=DocumentError(ErrorCode.INTERNAL_ERROR)))
+    with pytest.raises(_Retried):
+        tasks.validate_document_task.run(doc_id)
+    retry.reset_mock()
+    monkeypatch.setattr("app.validation.engine.validate_document",
+                        MagicMock(side_effect=DocumentError(ErrorCode.CORRUPT_FILE)))
+    with pytest.raises(DocumentError):
+        tasks.validate_document_task.run(doc_id)
+    retry.assert_not_called()

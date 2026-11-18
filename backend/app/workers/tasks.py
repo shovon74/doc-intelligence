@@ -111,6 +111,16 @@ def extract_document_task(self, document_id: str):
         db.close()
 
 
+def _index(db, document_id: str) -> None:
+    """Search indexing never fails a document: it is retried by reprocessing."""
+    from app.search.indexer import index_document
+    try:
+        index_document(db, document_id)
+    except Exception:
+        db.rollback()
+        logger.exception(f"Search indexing failed for document {document_id}")
+
+
 @celery_app.task(name="app.workers.tasks.validate_document", bind=True)
 def validate_document_task(self, document_id: str):
     """Validation stage: rules + duplicates -> issues, review flags, final status."""
@@ -122,7 +132,9 @@ def validate_document_task(self, document_id: str):
     try:
         retries = self.request.retries
         try:
-            return validate_document(db, document_id, will_retry=will_retry(retries))
+            result = validate_document(db, document_id, will_retry=will_retry(retries))
+            _index(db, document_id)
+            return result
         except DocumentError as err:
             if should_retry(err, retries):
                 raise self.retry(exc=err, countdown=backoff_seconds(retries))

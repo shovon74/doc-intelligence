@@ -14,6 +14,7 @@ from app.api.v1.documents import router as documents_router
 from app.api.v1.health import router as health_router
 from app.api.v1.invoices import router as invoices_router
 from app.api.v1.providers import router as providers_router
+from app.api.v1.search import router as search_router
 
 setup_logging()
 
@@ -71,6 +72,7 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(invoices_router, prefix="/api/v1")
 app.include_router(crosscheck_router, prefix="/api/v1", tags=["Cross-check"])
 app.include_router(providers_router, prefix="/api/v1")
+app.include_router(search_router, prefix="/api/v1")
 
 
 @app.get("/", include_in_schema=False)

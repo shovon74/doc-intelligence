@@ -12,6 +12,7 @@ from app.db.models import Correction, Document, Invoice, ValidationIssue
 from app.db.session import get_db
 from app.extraction.normalize import norm_invoice_number, norm_supplier
 from app.schemas.api import InvoiceOut, InvoiceSummary, InvoiceUpdate, PageOut
+from app.search.indexer import safe_reindex_invoice
 from app.validation import engine
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -117,6 +118,7 @@ def correct_invoice(invoice_id: uuid.UUID, body: InvoiceUpdate, db: Session = De
         engine.validate_invoice(db, inv)
         engine.settle_document(db, doc)
         db.commit()
+        safe_reindex_invoice(db, inv)
         db.refresh(inv, ["validation_issues", "corrections", "line_items"])
     return invoice_out(inv)
 

@@ -1,0 +1,66 @@
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.16-final-0 _______________
+
+Name                                 Stmts   Miss  Cover   Missing
+------------------------------------------------------------------
+app/__init__.py                          0      0   100%
+app/api/__init__.py                      0      0   100%
+app/api/deps.py                         33      1    97%   33
+app/api/errors.py                       34      0   100%
+app/api/v1/__init__.py                   0      0   100%
+app/api/v1/auth.py                      33      0   100%
+app/api/v1/crosscheck.py                38      2    95%   43-44
+app/api/v1/documents.py                175      3    98%   75, 238, 252
+app/api/v1/health.py                    48      6    88%   52-53, 74-77, 81
+app/api/v1/invoices.py                 102      3    97%   61, 111, 137
+app/api/v1/providers.py                 18      1    94%   19
+app/api/v1/search.py                    81      6    93%   60, 69, 114-115, 122-123
+app/core/__init__.py                     0      0   100%
+app/core/config.py                      68      1    99%   100
+app/core/logging.py                     33     14    58%   13-29, 39, 43
+app/core/security.py                    28      2    93%   23-24
+app/db/__init__.py                       3      0   100%
+app/db/base.py                           3      0   100%
+app/db/models.py                       167      0   100%
+app/db/session.py                       11      0   100%
+app/extraction/__init__.py               0      0   100%
+app/extraction/extractor.py             36      0   100%
+app/extraction/grounding.py             58      0   100%
+app/extraction/normalize.py             55      0   100%
+app/extraction/prompts.py               10      0   100%
+app/extraction/segmentation.py          28      0   100%
+app/extraction/stage.py                 96      2    98%   89, 140
+app/llm/__init__.py                      0      0   100%
+app/llm/base.py                         58      0   100%
+app/llm/factory.py                      46      1    98%   44
+app/llm/fake.py                         43      0   100%
+app/llm/gemini_provider.py              36      5    86%   15, 41-42, 53-54
+app/llm/openai_provider.py              34      7    79%   18-20, 44-45, 54-55
+app/main.py                             51      1    98%   64
+app/processing/__init__.py               0      0   100%
+app/processing/detect.py                17      0   100%
+app/processing/errors.py                40      0   100%
+app/processing/image_preprocess.py      85     31    64%   40-43, 48-52, 56-59, 78-98
+app/processing/ocr.py                   52     11    79%   42-43, 65-67, 75-80
+app/processing/pdf.py                   79      0   100%
+app/processing/pipeline.py             178      6    97%   49-51, 78-80
+app/processing/sheet_mapping.py        164      8    95%   111-112, 120, 122, 138, 241, 257, 260
+app/processing/spreadsheet.py          152     13    91%   100, 102, 114, 181-184, 202, 210-211, 224-226
+app/schemas/__init__.py                  0      0   100%
+app/schemas/api.py                     161      0   100%
+app/schemas/extraction.py               42      0   100%
+app/search/__init__.py                   0      0   100%
+app/search/indexer.py                   88      4    95%   59, 132-134
+app/storage/__init__.py                  0      0   100%
+app/storage/file_handler.py             69      3    96%   124-126
+app/validation/__init__.py               0      0   100%
+app/validation/crosscheck.py            89      2    98%   35, 49
+app/validation/engine.py               144      2    99%   72, 153
+app/workers/celery_app.py                5      0   100%
+app/workers/retry.py                    13      0   100%
+app/workers/tasks.py                    96      3    97%   13, 136-137
+------------------------------------------------------------------
+TOTAL                                 2900    138    95%
+
+Run: `make test-cov` (offline: fake LLM and embedder, real Postgres and Redis from docker compose).
+Result: every test passed except one health test fixed afterwards (module-level tesseract cache); it passes alone (3 passed).

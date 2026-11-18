@@ -134,6 +134,7 @@ def test_chunk_fulltext_and_vector_roundtrip(db):
     got = db.get(DocumentChunk, chunk.id)
     assert list(got.embedding)[:2] == [1.0, 0.0] and len(got.embedding) == 768
     hit = db.scalar(select(DocumentChunk.id).where(
+        DocumentChunk.document_id == d.id,
         DocumentChunk.tsv.op("@@")(func.plainto_tsquery("english", "acme"))))
     assert hit == chunk.id
     other = [0.0] * 768

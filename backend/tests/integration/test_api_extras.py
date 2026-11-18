@@ -102,3 +102,21 @@ def test_resolving_issues_clears_the_flag_when_none_are_open(client, db):
     assert client.post(f"{API}/invoices/{inv.id}/resolve-issue/{uuid.uuid4()}",
                        headers=h).status_code == 404
     assert D(r["total"]) == D("120")
+
+
+def test_register_race_returns_409(client, monkeypatch):
+    """Two simultaneous registrations: the loser hits the unique index and gets 409, not 500."""
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import Session
+    monkeypatch.setattr(Session, "commit",
+                        lambda self: (_ for _ in ()).throw(IntegrityError("x", {}, Exception())))
+    r = client.post("/api/v1/auth/register", json={"email": "race@example.com", "password": "correct horse"})
+    assert r.status_code == 409
+    assert r.json()["error"]["code"]
+
+
+def test_indexing_failure_never_fails_the_document(db, monkeypatch):
+    from app.search import indexer
+    from app.workers.tasks import _index
+    monkeypatch.setattr(indexer, "index_document", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    _index(db, "00000000-0000-0000-0000-000000000000")      # must not raise

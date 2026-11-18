@@ -100,6 +100,9 @@ class DocumentError(Exception):
         self.detail = detail
         super().__init__(f"{info.code.value}: {detail}" if detail else info.code.value)
 
+    def __reduce__(self):
+        return (DocumentError, (self.code, self.detail))     # picklable, so Celery can store it
+
 
 def to_document_error(exc: BaseException) -> DocumentError:
     """Convert any exception into a DocumentError; unknown ones become INTERNAL_ERROR."""

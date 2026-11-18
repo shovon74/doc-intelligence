@@ -72,3 +72,11 @@ def test_every_message_tells_the_user_what_to_do():
     for code in ErrorCode:
         msg = get_error_info(code).message
         assert msg.endswith(".") and len(msg.split()) >= 6, code
+
+
+@pytest.mark.unit
+def test_document_error_survives_pickling():
+    import pickle
+    err = pickle.loads(pickle.dumps(DocumentError(ErrorCode.NO_TEXT_FOUND, "1 page, no text")))
+    assert err.code is ErrorCode.NO_TEXT_FOUND and err.detail == "1 page, no text"
+    assert err.message and not err.retryable

@@ -1,6 +1,9 @@
 from typing import List, Literal, Optional
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_DEFAULT_SECRET = "super-secret-docintel-key-change-in-production-32chars"
 
 
 class Settings(BaseSettings):
@@ -20,7 +23,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     # JWT Security
-    JWT_SECRET: str = "super-secret-docintel-key-change-in-production-32chars"
+    JWT_SECRET: str = _DEFAULT_SECRET
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
@@ -62,6 +65,19 @@ class Settings(BaseSettings):
     OCR_DPI: int = 250
     PDF_MIN_TEXT_CHARS_PER_PAGE: int = 50
     USE_LLM_VISION_FALLBACK: bool = False
+
+    @field_validator("JWT_SECRET")
+    @classmethod
+    def _secret_not_blank(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters")
+        return v
+
+    @model_validator(mode="after")
+    def _production_needs_real_secret(self) -> "Settings":
+        if self.ENVIRONMENT.lower() == "production" and self.JWT_SECRET == _DEFAULT_SECRET:
+            raise ValueError("Set JWT_SECRET to a private value when ENVIRONMENT=production")
+        return self
 
     @property
     def cors_origins_list(self) -> List[str]:

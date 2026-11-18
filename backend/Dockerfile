@@ -28,11 +28,12 @@ COPY pyproject.toml .
 # Install dependencies (including dev for test runner)
 RUN pip install --no-cache-dir -e ".[dev]"
 
-# Create upload directory and user
-RUN mkdir -p /data/uploads && chmod 777 /data/uploads
+# Unprivileged user owns the upload directory; nothing runs as root
+RUN useradd --create-home --uid 10001 app     && mkdir -p /data/uploads && chown -R app:app /data/uploads
 
 # Copy application source code
-COPY . .
+COPY --chown=app:app . .
+USER app
 
 # Expose FastAPI port
 EXPOSE 8000

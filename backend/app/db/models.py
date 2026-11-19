@@ -56,8 +56,8 @@ class Document(Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(
-        String(50), default="queued", nullable=False
-    )  # queued | processing | extracting | validating | completed | needs_review | failed
+        String(50), default="uploaded", nullable=False
+    )  # uploaded | queued | processing | extracting | validating | completed | needs_review | failed
     progress_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -132,6 +132,7 @@ class Invoice(Base):
     customer_name: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     subtotal: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     tax: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    discount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     total: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True, index=True)
     currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 

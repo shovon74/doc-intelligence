@@ -75,11 +75,16 @@ def _line(li: LLMLineItem) -> LineItemExtraction:
         tax_rate=parse_decimal(li.tax_rate))
 
 
+def _abs(v):
+    return abs(v) if v is not None else None
+
+
 def normalize_invoice(raw: LLMInvoice) -> InvoiceExtraction:
     lines = [_line(li) for li in raw.line_items]
     return InvoiceExtraction(
         invoice_number=_text(raw.invoice_number), invoice_date=parse_date_strict(raw.invoice_date),
         supplier_name=_text(raw.supplier_name), customer_name=_text(raw.customer_name),
         subtotal=parse_decimal(raw.subtotal), tax=parse_decimal(raw.tax),
+        discount=_abs(parse_decimal(raw.discount)),
         total=parse_decimal(raw.total), currency=normalize_currency(raw.currency),
         line_items=[li for li in lines if any(v is not None for v in li.model_dump().values())])

@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, DocDetail, errMsg, IN_FLIGHT, Invoice } from './api';
-import { Badge, btn, card, Err, input } from './ui';
+import { Badge, btn, btn2, card, Err, input } from './ui';
 
-type Field = 'invoice_number' | 'invoice_date' | 'supplier_name' | 'customer_name' | 'subtotal' | 'tax' | 'total' | 'currency';
+type Field = 'invoice_number' | 'invoice_date' | 'supplier_name' | 'customer_name' | 'subtotal' | 'tax' | 'discount' | 'total' | 'currency';
 const FIELDS: [Field, string, string][] = [
   ['invoice_number', 'Invoice number', 'text'], ['invoice_date', 'Date', 'date'],
   ['supplier_name', 'Supplier', 'text'], ['customer_name', 'Customer', 'text'],
-  ['subtotal', 'Subtotal', 'text'], ['tax', 'Tax', 'text'],
+  ['subtotal', 'Subtotal', 'text'], ['tax', 'Tax', 'text'], ['discount', 'Discount', 'text'],
   ['total', 'Total', 'text'], ['currency', 'Currency', 'text'],
 ];
 const ORDER = { error: 0, warning: 1, info: 2 };
@@ -118,6 +118,10 @@ export default function Detail() {
     refetchInterval: (q) => (q.state.data && IN_FLIGHT.includes(q.state.data.status) ? 3000 : false),
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['document', id] });
+  const start = useMutation({
+    mutationFn: () => api.post(`/documents/${id}/reprocess`),
+    onSuccess: refresh,
+  });
 
   if (isError) return <Err msg={errMsg(error)} />;
   if (!doc) return <p>Loading…</p>;
@@ -130,13 +134,23 @@ export default function Detail() {
         {IN_FLIGHT.includes(doc.status) && <span className="text-sm text-muted">{Math.round(doc.progress_percent)}%</span>}
       </div>
       <Err msg={doc.error_message} />
+      {doc.status === 'uploaded' && (
+        <div className={`${card} flex items-center gap-3`}>
+          <p className="flex-1 text-sm">Not processed yet, so there is no extracted data. Start processing to extract it
+            (the document is sent to the extraction model).</p>
+          <button className={btn2} disabled={start.isPending}
+                  onClick={() => { if (window.confirm('Start processing this document?')) start.mutate(); }}>Start processing</button>
+          <Link to="/" className="border border-gray-300 rounded-full px-4 py-2 text-sm">Cancel</Link>
+        </div>
+      )}
+      <Err msg={start.isError ? errMsg(start.error) : null} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
         <div className={card}><Preview doc={doc} /></div>
         <div className="space-y-4">
           {doc.invoices.map((inv) => (
             <InvoiceCard key={`${inv.id}-${inv.corrections.length}`} inv={inv} onChanged={refresh} />
           ))}
-          {doc.invoices.length === 0 && !IN_FLIGHT.includes(doc.status) && !doc.error_message &&
+          {doc.invoices.length === 0 && !IN_FLIGHT.includes(doc.status) && doc.status !== 'uploaded' && !doc.error_message &&
             <p className="text-muted">No invoices were extracted.</p>}
           <div className={card}>
             <h4 className="font-medium mb-2">Processing history</h4>

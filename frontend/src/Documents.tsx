@@ -5,33 +5,47 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Doc, errMsg, IN_FLIGHT, Page } from './api';
 import { Badge, btn, btn2, card, Err, input } from './ui';
 
-const STATUSES = ['queued', 'processing', 'extracting', 'validating', 'completed', 'needs_review', 'failed'];
+const STATUSES = ['uploaded', 'queued', 'processing', 'extracting', 'validating', 'completed', 'needs_review', 'failed'];
+
+const CONSENT = 'Start processing? The document will be sent to the extraction model (LLM).';
 
 function Upload() {
   const qc = useQueryClient();
   const [provider, setProvider] = useState('');
+  const [staged, setStaged] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const providers = useQuery({ queryKey: ['providers'], queryFn: async () => (await api.get('/providers')).data });
 
-  const send = async (files: File[]) => {
+  const send = async (startNow: boolean) => {
     setErr(null);
+    setBusy(true);
     const form = new FormData();
-    files.forEach((f) => form.append('files', f));
+    staged.forEach((f) => form.append('files', f));
     if (provider) form.append('llm_provider', provider);
     try {
       const { data } = await api.post('/documents', form);
+      if (startNow) {
+        await Promise.all(data.documents.filter((d: { duplicate: boolean }) => !d.duplicate)
+          .map((d: { id: string }) => api.post(`/documents/${d.id}/reprocess`)));
+      }
       setNotes([
         ...data.documents.map((d: { filename: string; duplicate: boolean }) =>
-          `${d.filename}: ${d.duplicate ? 'already uploaded' : 'queued'}`),
+          `${d.filename}: ${d.duplicate ? 'already uploaded' : startNow ? 'processing started' : 'uploaded, not processed yet'}`),
         ...data.rejected.map((r: { filename: string; message: string }) => `${r.filename}: ${r.message}`),
       ]);
+      setStaged([]);
       qc.invalidateQueries({ queryKey: ['documents'] });
     } catch (x) {
       setErr(errMsg(x));
+    } finally {
+      setBusy(false);
     }
   };
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop: send });
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (files) => { setNotes([]); setStaged((cur) => [...cur, ...files]); },
+  });
 
   return (
     <section className={`${card} space-y-3`}>
@@ -47,6 +61,18 @@ function Upload() {
         <input {...getInputProps()} />
         Drop PDF, image, XLSX/XLS or CSV files here, or click to choose
       </div>
+      {staged.length > 0 && (
+        <div className="space-y-2">
+          {staged.map((f, i) => <p key={i} className="text-sm">{f.name}</p>)}
+          <div className="flex gap-2">
+            <button className={btn2} disabled={busy}
+                    onClick={() => { if (window.confirm(CONSENT)) send(true); }}>Upload &amp; start processing</button>
+            <button className={btn} disabled={busy} onClick={() => send(false)}>Upload only</button>
+            <button className="border border-gray-300 rounded-full px-4 py-2 text-sm" disabled={busy}
+                    onClick={() => setStaged([])}>Cancel</button>
+          </div>
+        </div>
+      )}
       <Err msg={err} />
       {notes.map((n, i) => <p key={i} className="text-sm text-muted">{n}</p>)}
     </section>
@@ -111,6 +137,9 @@ export default function Documents() {
                 </td>
                 <td>{d.invoice_count}{d.needs_review_count > 0 && <span className="text-amber"> ({d.needs_review_count} to review)</span>}</td>
                 <td className="text-right">
+                  <Link className={`${btn} inline-block mr-2`} to={`/documents/${d.id}`}>View</Link>
+                  {d.status === 'uploaded' && <button className={btn2}
+                    onClick={() => { if (window.confirm(CONSENT)) reprocess.mutate(d.id); }}>Start processing</button>}
                   {d.status === 'failed' && <button className={btn} onClick={() => reprocess.mutate(d.id)}>Reprocess</button>}
                 </td>
               </tr>

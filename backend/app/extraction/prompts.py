@@ -22,6 +22,7 @@ EXTRACTION_SCHEMA_HINT = json.dumps({
     "invoice_number": "string|null", "invoice_date": "YYYY-MM-DD|null",
     "supplier_name": "string|null", "customer_name": "string|null",
     "subtotal": "number as printed|null", "tax": "number as printed|null",
+    "discount": "total discount/credit deducted from the amount due, positive number|null",
     "total": "number as printed|null", "currency": "ISO 4217 code|null",
     "line_items": [{"description": "string|null", "quantity": "number|null",
                     "unit_price": "number|null", "line_total": "number|null",
@@ -38,7 +39,7 @@ def extraction_user(text: str) -> str:
 
 COLUMN_MAPPING_SYSTEM = """You are a tabular data mapping expert.
 Given a list of column headers and sample row values from a spreadsheet, map them to standard invoice fields:
-[invoice_number, invoice_date, supplier_name, customer_name, subtotal, tax, total, currency, description, quantity, unit_price, line_total, tax_rate].
+[invoice_number, invoice_date, supplier_name, customer_name, subtotal, tax, discount, total, currency, description, quantity, unit_price, line_total, tax_rate].
 Only map columns where you have high confidence. Return a JSON dictionary mapping the standard field name to the exact original column header name."""
 
 

@@ -54,11 +54,13 @@ def missing_field(inv: Invoice, today: date) -> list[Issue]:
 def total_mismatch(inv: Invoice, today: date) -> list[Issue]:
     if None in (inv.subtotal, inv.tax, inv.total):
         return []
-    expected = inv.subtotal + inv.tax
+    discount = abs(inv.discount) if inv.discount is not None else Decimal(0)
+    expected = inv.subtotal + inv.tax - discount
     if _close(inv.total, expected):
         return []
+    formula = f"Subtotal {inv.subtotal} + tax {inv.tax}" + (f" - discount {discount}" if discount else "")
     return [Issue("TOTAL_MISMATCH", ERROR,
-                  f"Subtotal {inv.subtotal} + tax {inv.tax} = {expected}, but total is {inv.total}.",
+                  f"{formula} = {expected}, but total is {inv.total}.",
                   "total", {"expected": str(expected), "actual": str(inv.total)})]
 
 

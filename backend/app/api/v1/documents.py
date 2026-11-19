@@ -25,7 +25,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 
 MAX_FILES_PER_UPLOAD = 20
 IN_FLIGHT = ("queued", "processing", "extracting", "validating")
-STATUSES = IN_FLIGHT + ("completed", "needs_review", "failed")
+STATUSES = ("uploaded",) + IN_FLIGHT + ("completed", "needs_review", "failed")
 
 
 def owned(db: Session, user: CurrentUser, document_id: uuid.UUID) -> Document:
@@ -78,7 +78,7 @@ def _check_provider(requested: str | None) -> str | None:
 
 
 @router.post("", response_model=UploadResult, status_code=status.HTTP_202_ACCEPTED,
-             summary="Upload one or more documents (processing runs in the background)")
+             summary="Upload one or more documents (processing starts via POST /{id}/reprocess)")
 def upload(files: list[UploadFile] = File(...), llm_provider: str | None = Form(None),
            db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     if len(files) > MAX_FILES_PER_UPLOAD:
@@ -96,8 +96,6 @@ def upload(files: list[UploadFile] = File(...), llm_provider: str | None = Form(
         except DocumentError as e:
             rejected.append((name, e))
             continue
-        if not saved["is_duplicate"]:
-            enqueue(db, doc)
         db.refresh(doc)
         accepted.append(UploadedOut(id=doc.id, filename=name, status=doc.status,
                                     duplicate=saved["is_duplicate"]))

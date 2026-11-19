@@ -60,6 +60,7 @@ export interface Invoice {
   customer_name: string | null;
   subtotal: string | null;
   tax: string | null;
+  discount: string | null;
   total: string | null;
   currency: string | null;
   needs_review: boolean;

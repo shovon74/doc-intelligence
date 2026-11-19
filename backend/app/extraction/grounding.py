@@ -70,7 +70,7 @@ def ungrounded_fields(inv: InvoiceExtraction, text: str) -> list[str]:
         v = getattr(inv, f)
         if v and _squash(v) not in flat:
             bad.append(f)
-    for f in ("subtotal", "tax", "total"):
+    for f in ("subtotal", "tax", "discount", "total"):
         if not num_ok(getattr(inv, f)):
             bad.append(f)
     if inv.currency:

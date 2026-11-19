@@ -149,7 +149,7 @@ def register_document(
         file_ext=saved["file_ext"],
         size_bytes=saved["size_bytes"],
         sha256=saved["sha256"],
-        status="queued",
+        status="uploaded",
         llm_provider_requested=llm_provider,
     )
     db.add(doc)

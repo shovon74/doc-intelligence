@@ -126,6 +126,7 @@ class InvoiceSummary(ORM):
     customer_name: str | None
     subtotal: Decimal | None
     tax: Decimal | None
+    discount: Decimal | None = None
     total: Decimal | None
     currency: str | None
     needs_review: bool
@@ -204,6 +205,7 @@ class InvoiceUpdate(BaseModel):
     customer_name: str | None = Field(None, max_length=500)
     subtotal: Decimal | None = Field(None, max_digits=18, decimal_places=4)
     tax: Decimal | None = Field(None, max_digits=18, decimal_places=4)
+    discount: Decimal | None = Field(None, max_digits=18, decimal_places=4)
     total: Decimal | None = Field(None, max_digits=18, decimal_places=4)
     currency: str | None = Field(None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
 

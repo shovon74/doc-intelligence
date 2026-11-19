@@ -141,7 +141,8 @@ def resolve_issue(invoice_id: uuid.UUID, issue_id: uuid.UUID, db: Session = Depe
     open_issues = [i for i in db.scalars(select(ValidationIssue).where(
         ValidationIssue.invoice_id == inv.id, ValidationIssue.resolved.is_(False)))
         if i.severity in (engine.ERROR, engine.WARNING)]
-    reasons = engine._review_reasons(inv, open_issues)
+    # all issues acknowledged: also clear ungrounded flags, which have no issue row to resolve
+    reasons = engine._review_reasons(inv, open_issues) if open_issues else []
     inv.review_reason = reasons or None
     inv.needs_review = bool(reasons)
     engine.settle_document(db, doc)

@@ -110,7 +110,7 @@ def _persist(db: Session, doc: Document, items: list[ExtractedInvoice]) -> None:
             document_id=doc.id, segment_index=idx, page_start=it.page_start, page_end=it.page_end,
             invoice_number=ex.invoice_number, invoice_date=ex.invoice_date,
             supplier_name=ex.supplier_name, customer_name=ex.customer_name, subtotal=ex.subtotal,
-            tax=ex.tax, total=ex.total, currency=ex.currency,
+            tax=ex.tax, discount=ex.discount, total=ex.total, currency=ex.currency,
             supplier_norm=norm_supplier(ex.supplier_name),
             invoice_number_norm=norm_invoice_number(ex.invoice_number),
             field_confidence=it.field_confidence or None,

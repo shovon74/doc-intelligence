@@ -7,7 +7,7 @@ and is never guessed.
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import field_validator, BaseModel, Field
 
 
 class LineItemExtraction(BaseModel):
@@ -25,6 +25,7 @@ class InvoiceExtraction(BaseModel):
     customer_name: str | None = None
     subtotal: Decimal | None = None
     tax: Decimal | None = None
+    discount: Decimal | None = None
     total: Decimal | None = None
     currency: str | None = None
     line_items: list[LineItemExtraction] = Field(default_factory=list)
@@ -51,13 +52,22 @@ class LLMInvoice(BaseModel):
     customer_name: Scalar = None
     subtotal: Scalar = None
     tax: Scalar = None
+    discount: Scalar = None
     total: Scalar = None
     currency: Scalar = None
     line_items: list[LLMLineItem] = Field(default_factory=list)
     field_confidence: dict[str, float] = Field(default_factory=dict)
     field_evidence: dict[str, str | None] = Field(default_factory=dict)
 
+    @field_validator("field_evidence", mode="before")
+    @classmethod
+    def _flat_evidence(cls, v):
+        """Models sometimes return a list of snippets (e.g. for line_items): join them."""
+        if not isinstance(v, dict):
+            return v
+        return {k: " | ".join(map(str, x)) if isinstance(x, (list, tuple)) else x for k, x in v.items()}
+
 
 INVOICE_FIELDS = ("invoice_number", "invoice_date", "supplier_name", "customer_name",
-                  "subtotal", "tax", "total", "currency")
+                  "subtotal", "tax", "discount", "total", "currency")
 LINE_FIELDS = ("description", "quantity", "unit_price", "line_total", "tax_rate")

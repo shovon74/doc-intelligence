@@ -141,3 +141,20 @@ def validate_document_task(self, document_id: str):
             raise
     finally:
         db.close()
+
+
+# Warm the heavy imports (PyMuPDF, OCR, SQLAlchemy, LLM clients) once in the parent worker
+# process so forked children inherit them. Otherwise every child pays the import cost
+# (10-50 s on a slow Docker bind mount) on its first task of each stage.
+def _preload() -> None:
+    import app.db.session  # noqa: F401
+    import app.extraction.stage  # noqa: F401
+    import app.processing.pipeline  # noqa: F401
+    import app.search.indexer  # noqa: F401
+    import app.validation.engine  # noqa: F401
+
+
+try:
+    _preload()
+except Exception:          # never block worker start-up on a preload problem
+    logger.exception("Import preload failed; falling back to lazy imports")

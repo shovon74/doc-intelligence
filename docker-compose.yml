@@ -79,7 +79,7 @@ services:
       api:
         condition: service_started
     command: >
-      celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=4
+      celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
 
   frontend:
     build:

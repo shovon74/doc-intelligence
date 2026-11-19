@@ -93,17 +93,21 @@ def test_tokens_expire_and_cannot_be_forged(client):
 
 
 # ------------------------------------------------------------------ upload and documents
-def test_upload_returns_202_immediately_and_queues_the_task(client):
+def test_upload_returns_202_and_waits_for_explicit_start(client):
     h = signup(client, "up@example.com")
     r = upload(client, h)
     assert r.status_code == 202
     (doc,) = r.json()["documents"]
-    assert doc["status"] == "queued" and doc["duplicate"] is False and r.json()["rejected"] == []
+    assert doc["status"] == "uploaded" and doc["duplicate"] is False and r.json()["rejected"] == []
+    client.delay.assert_not_called()                            # no automatic processing
+
+    started = client.post(f"{API}/documents/{doc['id']}/reprocess", headers=h)
+    assert started.status_code == 202 and started.json()["status"] == "queued"
     client.delay.assert_called_once_with(doc["id"])
 
     again = upload(client, h).json()["documents"][0]            # same bytes again
     assert again["duplicate"] is True and again["id"] == doc["id"]
-    assert client.delay.call_count == 1                         # not processed twice
+    assert client.delay.call_count == 1                         # never enqueued twice
 
 
 def test_upload_rejections_use_the_error_envelope(client):
@@ -131,7 +135,9 @@ def test_unreachable_broker_fails_the_document_instead_of_hiding_it(client):
     client.delay.side_effect = RuntimeError("redis down")
     h = signup(client, "broker@example.com")
     doc = upload(client, h).json()["documents"][0]
-    assert doc["status"] == "failed"
+    assert doc["status"] == "uploaded"
+    started = client.post(f"{API}/documents/{doc['id']}/reprocess", headers=h)
+    assert started.status_code == 202 and started.json()["status"] == "failed"
     got = client.get(f"{API}/documents/{doc['id']}", headers=h).json()
     assert got["error_code"] == "INTERNAL_ERROR" and got["error_message"]
 
@@ -280,7 +286,9 @@ def test_correction_blocked_while_document_is_processing(client, db):
     import uuid
     h = signup(client, "busy@example.com")
     doc = db.get(Document, uuid.UUID(upload(client, h).json()["documents"][0]["id"]))
+    doc.status = "queued"
     inv = make_invoice(db, doc.id)
+    db.flush()
     assert client.patch(f"{API}/invoices/{inv.id}", headers=h,
                         json={"total": "1"}).status_code == 409           # still queued
 

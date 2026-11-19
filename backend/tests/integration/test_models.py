@@ -50,7 +50,7 @@ def test_user_insert_read_defaults_and_unique_email(db):
 def test_document_defaults(db):
     d = make_doc(db, make_user(db))
     db.refresh(d)
-    assert d.status == "queued" and d.progress_percent == 0.0 and d.page_count == 0
+    assert d.status == "uploaded" and d.progress_percent == 0.0 and d.page_count == 0
     assert d.error_code is None and d.updated_at is not None
 
 

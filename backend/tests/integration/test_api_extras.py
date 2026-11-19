@@ -94,10 +94,10 @@ def test_resolving_issues_clears_the_flag_when_none_are_open(client, db):
     r = client.post(url(issues[0]), headers=h).json()
     assert r["needs_review"] is True and r["review_reason"] == ["UNGROUNDED:total", "LOW_CONFIDENCE"]
     assert [i["resolved"] for i in sorted(r["issues"], key=lambda i: i["code"])] == [False, True]
-    r = client.post(url(issues[1]), headers=h).json()                  # only UNGROUNDED left
-    assert r["needs_review"] is True and r["review_reason"] == ["UNGROUNDED:total"]
+    r = client.post(url(issues[1]), headers=h).json()                  # all acknowledged
+    assert r["needs_review"] is False and r["review_reason"] is None   # UNGROUNDED cleared too
     db.refresh(doc)
-    assert doc.status == "needs_review"
+    assert doc.status == "completed"
 
     assert client.post(f"{API}/invoices/{inv.id}/resolve-issue/{uuid.uuid4()}",
                        headers=h).status_code == 404

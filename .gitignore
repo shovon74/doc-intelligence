@@ -60,3 +60,7 @@ Thumbs.db
 # Eval artifacts (keep small sample fixtures, ignore huge generated datasets)
 eval/dataset/generated/
 eval/results/*.tmp
+
+# Internal planning docs (local only, never pushed)
+docs/REVISED_PLAN.md
+IMPLEMENTATION_PLAN.md

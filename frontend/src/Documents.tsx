@@ -95,6 +95,7 @@ export default function Documents() {
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['documents'] });
   const reprocess = useMutation({ mutationFn: (id: string) => api.post(`/documents/${id}/reprocess`), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: (id: string) => api.delete(`/documents/${id}`), onSuccess: refresh });
   const reprocessAll = useMutation({ mutationFn: () => api.post('/documents/reprocess-failed'), onSuccess: refresh });
 
   const data = list.data;
@@ -117,7 +118,7 @@ export default function Documents() {
           </label>
           <button className={`${btn2} ml-auto`} onClick={() => reprocessAll.mutate()}>Reprocess all failed</button>
         </div>
-        <Err msg={list.isError ? errMsg(list.error) : null} />
+        <Err msg={list.isError ? errMsg(list.error) : remove.isError ? errMsg(remove.error) : null} />
         <table className="w-full text-sm">
           <thead className="text-left text-muted">
             <tr><th className="py-2">File</th><th>Status</th><th>Progress</th><th>Invoices</th><th /></tr>
@@ -141,6 +142,8 @@ export default function Documents() {
                   {d.status === 'uploaded' && <button className={btn2}
                     onClick={() => { if (window.confirm(CONSENT)) reprocess.mutate(d.id); }}>Start processing</button>}
                   {d.status === 'failed' && <button className={btn} onClick={() => reprocess.mutate(d.id)}>Reprocess</button>}
+                  {!IN_FLIGHT.includes(d.status) && <button className={`${btn} ml-2`}
+                    onClick={() => { if (window.confirm(`Delete ${d.original_filename} and its extracted data?`)) remove.mutate(d.id); }}>Delete</button>}
                 </td>
               </tr>
             ))}

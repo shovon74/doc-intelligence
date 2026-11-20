@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, DocDetail, errMsg, IN_FLIGHT, Invoice } from './api';
 import { Badge, btn, btn2, card, Err, input } from './ui';
@@ -24,7 +24,12 @@ function Preview({ doc }: { doc: DocDetail }) {
   }, [doc.id]);
 
   if (!url) return <p className="text-muted text-sm">Loading preview…</p>;
-  if (doc.mime_type === 'application/pdf') return <iframe src={url} title="Original" className="w-full h-[75vh] rounded-lg" />;
+  if (doc.mime_type === 'application/pdf') return (
+      <div className="space-y-2">
+        <iframe src={`${url}#navpanes=0&view=FitH`} title="Original" className="w-full h-[85vh] rounded-lg" />
+        <a className="text-navy underline text-sm" href={url} target="_blank" rel="noreferrer">Open in new tab</a>
+      </div>
+    );
   if (doc.mime_type.startsWith('image/') && doc.file_ext !== 'tiff') return <img src={url} alt="Original" className="w-full rounded-lg" />;
   return <a className="text-navy underline" href={url} download={doc.original_filename}>Download {doc.original_filename}</a>;
 }
@@ -70,7 +75,7 @@ function InvoiceCard({ inv, onChanged }: { inv: Invoice; onChanged: () => void }
       </div>
       <Err msg={err} />
       <button className={btn} disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-        {save.isPending ? 'Saving…' : 'Save and re-validate'}
+        {save.isPending ? 'Applying…' : 'Apply corrections'}
       </button>
 
       {issues.length > 0 && (
@@ -118,6 +123,15 @@ export default function Detail() {
     refetchInterval: (q) => (q.state.data && IN_FLIGHT.includes(q.state.data.status) ? 3000 : false),
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['document', id] });
+  const navigate = useNavigate();
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/documents/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); navigate('/'); },
+  });
+  const reprocess = useMutation({
+    mutationFn: () => api.post(`/documents/${id}/reprocess`),
+    onSuccess: refresh,
+  });
   const start = useMutation({
     mutationFn: () => api.post(`/documents/${id}/reprocess`),
     onSuccess: refresh,
@@ -143,9 +157,17 @@ export default function Detail() {
           <Link to="/" className="border border-gray-300 rounded-full px-4 py-2 text-sm">Cancel</Link>
         </div>
       )}
-      <Err msg={start.isError ? errMsg(start.error) : null} />
-      <div className="grid md:grid-cols-2 gap-4 items-start">
-        <div className={card}><Preview doc={doc} /></div>
+      {!IN_FLIGHT.includes(doc.status) && (
+        <div className="flex gap-2">
+          {doc.status !== 'uploaded' && <button className={btn} disabled={reprocess.isPending}
+                  onClick={() => { if (window.confirm('Reprocess this document? Extracted data will be replaced.')) reprocess.mutate(); }}>Reprocess</button>}
+          <button className={btn} disabled={remove.isPending}
+                  onClick={() => { if (window.confirm(`Delete ${doc.original_filename} and its extracted data?`)) remove.mutate(); }}>Delete</button>
+        </div>
+      )}
+      <Err msg={start.isError ? errMsg(start.error) : reprocess.isError ? errMsg(reprocess.error) : remove.isError ? errMsg(remove.error) : null} />
+      <div className="grid lg:grid-cols-[1.2fr_1fr] gap-4 items-start">
+        <div className={`${card} lg:sticky lg:top-2`}><Preview doc={doc} /></div>
         <div className="space-y-4">
           {doc.invoices.map((inv) => (
             <InvoiceCard key={`${inv.id}-${inv.corrections.length}`} inv={inv} onChanged={refresh} />

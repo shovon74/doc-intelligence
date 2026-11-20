@@ -5,6 +5,7 @@ import { btn, card, Err, input } from './ui';
 import Documents from './Documents';
 import Detail from './Detail';
 import Search from './Search';
+import Crosscheck from './Crosscheck';
 
 const LOGO = 'https://images.cottagehome.care/JeRtSremNqgkxL9F76cqM';
 const Logo = ({ h }: { h: string }) => <img src={LOGO} alt="Cottage Home Care" className={h} />;
@@ -21,6 +22,7 @@ function Layout({ children }: { children: ReactNode }) {
         <Link to="/"><Logo h="h-10" /></Link>
         <Link to="/" className="text-navy font-medium">Documents</Link>
         <Link to="/search" className="text-navy font-medium">Search</Link>
+        <Link to="/crosscheck" className="text-navy font-medium">Compare</Link>
         <button onClick={signOut} className="ml-auto text-sm text-muted underline">Sign out</button>
       </header>
       {children}
@@ -76,6 +78,7 @@ export default function App() {
         <Route path="/" element={<Layout><Documents /></Layout>} />
         <Route path="/documents/:id" element={<Layout><Detail /></Layout>} />
         <Route path="/search" element={<Layout><Search /></Layout>} />
+        <Route path="/crosscheck" element={<Layout><Crosscheck /></Layout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

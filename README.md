@@ -52,6 +52,49 @@ make test-cov
 
 ---
 
+## Cross Verification (PDF-PDF, PDF-Excel)
+
+Compares the invoices of two already-processed documents, for example an invoice PDF and a
+CSV/XLSX ledger of the same invoices. Both sides are stored as structured invoices, so any
+combination of formats works.
+
+**Matching.** Invoices are paired by invoice number plus supplier, then by invoice number alone
+(numbers are compared ignoring case and punctuation). If exactly one unpaired invoice is left on
+each side they are paired anyway, so a mistyped invoice number shows up as a difference.
+
+**Compared fields.** Invoice number, supplier, customer, date, subtotal, tax, total, currency and
+line items (count, quantity, unit price, line total). Amounts use the same tolerance as validation.
+
+**Endpoints** (JWT required, documents must be `completed` or `needs_review`):
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/crosscheck` | Run a comparison. Body: `{"document_a_id": "<uuid>", "document_b_id": "<uuid>"}`. Returns `201`. |
+| `GET` | `/api/v1/crosscheck/{id}` | Fetch a saved result. |
+
+Errors: `404` document not found, `409` document not processed yet, `422` same document twice.
+
+```jsonc
+{
+  "id": "…", "document_a_id": "…", "document_b_id": "…",
+  "status": "mismatch",                       // "match" | "mismatch"
+  "result": {
+    "summary": { "invoices_a": 1, "invoices_b": 40, "paired": 1,
+                 "differences": 1, "only_in_a": 0, "only_in_b": 39 },
+    "pairs": [{ "a": { "invoice_number": "INV-1001" }, "b": { "invoice_number": "INV-1001" },
+                "differences": [{ "field": "total", "a": "1180.00", "b": "1108.00" }] }],
+    "only_in_a": [], "only_in_b": [ /* invoices with no partner */ ]
+  }
+}
+```
+
+**UI.** The **Compare** page in the web app: pick two documents, press Compare, and read the
+status, per-invoice difference table and the "Only in A / Only in B" lists. Tip: to check whether
+one invoice exists in a ledger, put the invoice in A and the ledger in B; the ledger's other rows
+appear under "Only in B".
+
+---
+
 ## Architecture & Documentation
 - [Architecture Details](docs/ARCHITECTURE.md)
 - [Database Schema & ER Diagram](docs/DATABASE.md)

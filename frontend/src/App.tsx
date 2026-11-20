@@ -6,6 +6,7 @@ import Documents from './Documents';
 import Detail from './Detail';
 import Search from './Search';
 import Crosscheck from './Crosscheck';
+import { LLMGate, LLMSettingsButton } from './LLMSetup';
 
 const LOGO = 'https://images.cottagehome.care/JeRtSremNqgkxL9F76cqM';
 const Logo = ({ h }: { h: string }) => <img src={LOGO} alt="Cottage Home Care" className={h} />;
@@ -23,8 +24,10 @@ function Layout({ children }: { children: ReactNode }) {
         <Link to="/" className="text-navy font-medium">Documents</Link>
         <Link to="/search" className="text-navy font-medium">Search</Link>
         <Link to="/crosscheck" className="text-navy font-medium">Compare</Link>
-        <button onClick={signOut} className="ml-auto text-sm text-muted underline">Sign out</button>
+        <span className="ml-auto"><LLMSettingsButton /></span>
+        <button onClick={signOut} className="text-sm text-muted underline">Sign out</button>
       </header>
+      <LLMGate />
       {children}
     </div>
   );

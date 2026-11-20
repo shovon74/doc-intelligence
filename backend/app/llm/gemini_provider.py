@@ -29,7 +29,8 @@ class GeminiProvider(LLMProvider):
         self._types = types
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=settings.LLM_TIMEOUT_SECONDS * 1000))
+            http_options=types.HttpOptions(api_version=settings.GEMINI_API_VERSION,
+                                             timeout=settings.LLM_TIMEOUT_SECONDS * 1000))
 
     def _complete(self, system: str, user: str) -> tuple[str, int, int]:
         t = self._types

@@ -29,7 +29,7 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir -e ".[dev]"
 
 # Unprivileged user owns the upload directory; nothing runs as root
-RUN useradd --create-home --uid 10001 app     && mkdir -p /data/uploads && chown -R app:app /data/uploads
+RUN useradd --create-home --uid 10001 app     && mkdir -p /data/uploads /data/config && chown -R app:app /data/uploads /data/config
 
 # Copy application source code
 COPY --chown=app:app . .

@@ -20,13 +20,15 @@ A production-grade, scalable document intelligence platform designed to extract,
 
 ### 1. Prerequisites
 - [Docker](https://www.docker.com/) & Docker Compose v2+
-- A Gemini API key (`GEMINI_API_KEY`) for live extraction and semantic search (the system also operates offline for testing/scaffolding).
+- A Gemini or OpenAI API key for live extraction and semantic search. You can paste it in the UI after sign-in (see step 2); no file editing needed.
 
 ### 2. Configure Environment
 ```bash
 cp .env.example .env
-# Edit .env and supply your GEMINI_API_KEY
+# Optional: set GEMINI_API_KEY here. Or skip it and enter the key in the UI.
 ```
+
+**Key from the UI (no config edit).** After signing in, if no key is configured, a prompt asks for the provider (Gemini or OpenAI), model name and API key. The key is checked with one test call, then saved to `/data/config/llm.json` on the `config_data` Docker volume, which lives outside the container and is shared by the API and worker. It is a one-time step that survives `docker compose down` and rebuilds. Use **AI settings** in the header to change it later. A key saved in the UI overrides `.env`. The key file is plain JSON with owner-only permissions; a production deployment would use a secrets manager.
 
 ### 3. Launch Services
 ```bash

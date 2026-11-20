@@ -13,6 +13,7 @@ from app.api.v1.crosscheck import router as crosscheck_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.health import router as health_router
 from app.api.v1.invoices import router as invoices_router
+from app.api.v1.llm_settings import router as llm_settings_router
 from app.api.v1.providers import router as providers_router
 from app.api.v1.search import router as search_router
 
@@ -72,6 +73,7 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(invoices_router, prefix="/api/v1")
 app.include_router(crosscheck_router, prefix="/api/v1", tags=["Cross-check"])
 app.include_router(providers_router, prefix="/api/v1")
+app.include_router(llm_settings_router, prefix="/api/v1")
 app.include_router(search_router, prefix="/api/v1")
 
 

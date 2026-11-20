@@ -80,3 +80,13 @@ export interface Page<T> {
   page: number;
   page_size: number;
 }
+
+export interface LLMSettings {
+  configured: boolean;
+  provider: 'openai' | 'gemini' | null;
+  model: string | null;
+  has_key: Record<string, boolean>;
+  models: Record<string, string>;
+  default_models: Record<string, string>;
+  source: 'ui' | 'env';
+}

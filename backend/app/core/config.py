@@ -2,8 +2,18 @@ from typing import List, Literal, Optional
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core import runtime_config
+
 
 _DEFAULT_SECRET = "super-secret-docintel-key-change-in-production-32chars"
+
+
+# attribute -> (provider, section in the saved file); the two *_PROVIDER fields follow "provider"
+_UI_FIELDS = {
+    "OPENAI_API_KEY": ("openai", "keys"), "GEMINI_API_KEY": ("gemini", "keys"),
+    "OPENAI_MODEL": ("openai", "models"), "GEMINI_MODEL": ("gemini", "models"),
+    "LLM_PROVIDER": ("", ""), "EMBEDDING_PROVIDER": ("", ""),
+}
 
 
 class Settings(BaseSettings):
@@ -51,6 +61,8 @@ class Settings(BaseSettings):
 
     OPENAI_MODEL: str = "gpt-4o-mini"
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    # system instructions and JSON mode are only available on v1beta
+    GEMINI_API_VERSION: str = "v1beta"
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 3
 
@@ -78,6 +90,21 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT.lower() == "production" and self.JWT_SECRET == _DEFAULT_SECRET:
             raise ValueError("Set JWT_SECRET to a private value when ENVIRONMENT=production")
         return self
+
+    def __getattribute__(self, name: str):
+        """UI-saved LLM config (runtime_config) overrides .env for these fields."""
+        value = super().__getattribute__(name)
+        if name in _UI_FIELDS:
+            saved = runtime_config.load()
+            provider = saved.get("provider")
+            if provider:
+                if name == "LLM_PROVIDER" or name == "EMBEDDING_PROVIDER":
+                    return provider
+                key, kind = _UI_FIELDS[name]
+                override = (saved.get(kind) or {}).get(key)
+                if override:
+                    return override
+        return value
 
     @property
     def cors_origins_list(self) -> List[str]:

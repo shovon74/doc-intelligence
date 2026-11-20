@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
 
-    LLM_PROVIDER: Literal["auto", "openai", "gemini", "fake"] = "auto"
-    LLM_PREFERENCE: str = "openai,gemini"
+    LLM_PROVIDER: Literal["auto", "openai", "gemini", "fake"] = "gemini"
+    LLM_PREFERENCE: str = "gemini,openai"
     LLM_FALLBACK_ENABLED: bool = True
 
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 3
 
     # Embeddings
-    EMBEDDING_PROVIDER: Literal["auto", "openai", "gemini", "fake"] = "auto"
+    EMBEDDING_PROVIDER: Literal["auto", "openai", "gemini", "fake"] = "gemini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIM: int = 768

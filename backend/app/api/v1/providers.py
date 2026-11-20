@@ -17,7 +17,8 @@ def providers(_: CurrentUser = Depends(get_current_user)):
         embedder = resolve_embedder()
     except DocumentError:
         embedder = None
-    options = ["auto"] + configured if configured else []
+    # "auto" is not listed: the UI's "Default" choice already means "use the server setting".
+    options = list(configured)
     if settings.ENVIRONMENT.lower() != "production" and settings.LLM_PROVIDER == "fake":
         options.append("fake")
     return ProvidersOut(

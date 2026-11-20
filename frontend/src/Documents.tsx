@@ -9,9 +9,15 @@ const STATUSES = ['uploaded', 'queued', 'processing', 'extracting', 'validating'
 
 const CONSENT = 'Start processing? The document will be sent to the extraction model (LLM).';
 
+// Read-only: the extraction model comes from the server config (GET /providers).
+function modelLabel(llm?: { default: string; models: Record<string, string> }): string | null {
+  if (!llm) return null;
+  const model = llm.models[llm.default];
+  return model ? `${llm.default} (${model})` : llm.default;
+}
+
 function Upload() {
   const qc = useQueryClient();
-  const [provider, setProvider] = useState('');
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState<string[]>([]);
@@ -23,7 +29,6 @@ function Upload() {
     setBusy(true);
     const form = new FormData();
     staged.forEach((f) => form.append('files', f));
-    if (provider) form.append('llm_provider', provider);
     try {
       const { data } = await api.post('/documents', form);
       if (startNow) {
@@ -51,10 +56,9 @@ function Upload() {
     <section className={`${card} space-y-3`}>
       <div className="flex items-center gap-3">
         <h2 className="text-navy font-semibold">Upload documents</h2>
-        <select className={`${input} w-auto ml-auto`} value={provider} onChange={(e) => setProvider(e.target.value)}>
-          <option value="">Default provider</option>
-          {(providers.data?.llm.options ?? []).map((p: string) => <option key={p}>{p}</option>)}
-        </select>
+        {modelLabel(providers.data?.llm) && (
+          <span className="ml-auto text-xs text-muted">Extraction model: {modelLabel(providers.data?.llm)}</span>
+        )}
       </div>
       <div {...getRootProps()} className={`border-2 border-dashed rounded-2xl p-8 text-center text-muted cursor-pointer
         ${isDragActive ? 'border-amber bg-orange-50' : 'border-gray-300 bg-panel'}`}>

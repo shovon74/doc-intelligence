@@ -87,7 +87,7 @@ export default function Crosscheck() {
     setBusy(true);
     try {
       const bId = mode === 'upload' && ledger ? await prepareLedger(ledger) : b;
-      setStep('Comparing…');
+      setStep('Checking…');
       const { data } = await api.post<Check>('/crosscheck', { document_a_id: a, document_b_id: bId });
       setCheck(data);
       docs.refetch();
@@ -113,6 +113,7 @@ export default function Crosscheck() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className={`${card} p-8 space-y-4`}>
+        <h2 className="text-navy text-lg font-semibold">Ledger Check</h2>
         <p className="text-sm text-muted">
           Pick an invoice that is already in the system, then upload the ledger (XLSX or CSV) to check it against.
           Invoices are paired by invoice number and supplier, then every field is compared.
@@ -143,7 +144,7 @@ export default function Crosscheck() {
         </div>
         <button className={`${btn} px-8`} onClick={compare}
                 disabled={!a || busy || (mode === 'upload' ? !ledger : !b || a === b)}>
-          {busy ? step ?? 'Working…' : 'Compare'}
+          {busy ? step ?? 'Working…' : 'Check'}
         </button>
         {mode === 'existing' && a && a === b && <p className="text-xs text-muted">Choose two different documents.</p>}
       </div>

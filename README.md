@@ -90,10 +90,12 @@ Errors: `404` document not found, `409` document not processed yet, `422` same d
 }
 ```
 
-**UI.** The **Compare** page in the web app: pick two documents, press Compare, and read the
-status, per-invoice difference table and the "Only in A / Only in B" lists. Tip: to check whether
-one invoice exists in a ledger, put the invoice in A and the ledger in B; the ledger's other rows
-appear under "Only in B".
+**UI.** The **Ledger Check** page in the web app: pick an invoice that is already in the system (A),
+upload a ledger (XLSX, XLS or CSV export from your CRM) as B, and press Check. The ledger is
+processed first, then you get the status, the per-invoice difference table and the "Only in A /
+Only in B" lists. An invoice that is in the ledger is paired and any differing fields are listed;
+one that is not appears under "Only in A". The ledger's other rows appear under "Only in B". B can
+also be an already uploaded document.
 
 ---
 

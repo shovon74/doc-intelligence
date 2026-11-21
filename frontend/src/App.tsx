@@ -23,7 +23,7 @@ function Layout({ children }: { children: ReactNode }) {
         <Link to="/"><Logo h="h-10" /></Link>
         <Link to="/" className="text-navy font-medium">Documents</Link>
         <Link to="/search" className="text-navy font-medium">Search</Link>
-        <Link to="/crosscheck" className="text-navy font-medium">Compare</Link>
+        <Link to="/crosscheck" className="text-navy font-medium">Ledger Check</Link>
         <span className="ml-auto"><LLMSettingsButton /></span>
         <button onClick={signOut} className="text-sm text-muted underline">Sign out</button>
       </header>

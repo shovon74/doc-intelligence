@@ -35,7 +35,7 @@ def _doc(db, user, name="a.pdf", status="validating"):
 
 
 def _inv(db, doc, idx=0, number="INV-1", supplier="ACME Ltd", **kw):
-    f = dict(invoice_number=number, invoice_date=date(2026, 5, 1), supplier_name=supplier,
+    f = dict(invoice_number=number, invoice_date=date(2026, 5, 1), supplier_name=supplier, customer_name="Client",
              subtotal=D("100"), tax=D("20"), total=D("120"), currency="EUR",
              supplier_norm="acme", invoice_number_norm=number.replace("-", "").upper())
     inv = Invoice(document_id=doc.id, segment_index=idx, **{**f, **kw})

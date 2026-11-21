@@ -23,7 +23,7 @@ def db(pg_engine):
     """A session whose work is rolled back at the end: tests never leave rows behind."""
     conn = pg_engine.connect()
     outer = conn.begin()
-    session = Session(bind=conn, join_transaction_mode="create_savepoint")
+    session = Session(bind=conn, autoflush=False, join_transaction_mode="create_savepoint")   # as in production
     yield session
     session.close()
     outer.rollback()

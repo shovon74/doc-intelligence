@@ -21,7 +21,10 @@ from app.processing import pipeline
 from app.processing.errors import DocumentError, ErrorCode
 
 ERROR, WARNING, INFO = "error", "warning", "info"
-REQUIRED_FIELDS = ("invoice_number", "invoice_date", "supplier_name", "total")
+# Vital fields: a missing one is an error. Tax, discount, subtotal and line items are optional
+# and never raise a "missing" or "low confidence" issue on their own.
+REQUIRED_FIELDS = ("invoice_number", "invoice_date", "supplier_name", "customer_name", "total",
+                   "currency")
 MIN_TOLERANCE = Decimal("0.02")
 REL_TOLERANCE = Decimal("0.001")
 MAX_TAX_RATE = Decimal("0.30")
@@ -39,16 +42,23 @@ class Issue:
     details: dict = dc_field(default_factory=dict)
 
 
+def _m(v: Decimal) -> str:
+    """Money for messages: 2 decimals (the database keeps 4)."""
+    return f"{v:.2f}"
+
+
+def _q(v: Decimal) -> str:
+    """Quantity for messages: no trailing zeros."""
+    return format(v.normalize(), "f")
+
+
 def _close(a: Decimal, b: Decimal) -> bool:
     return abs(a - b) <= max(MIN_TOLERANCE, abs(b) * REL_TOLERANCE)
 
 
 def missing_field(inv: Invoice, today: date) -> list[Issue]:
-    out = [Issue("MISSING_FIELD", ERROR, f"{f.replace('_', ' ').capitalize()} is missing.", f)
-           for f in REQUIRED_FIELDS if getattr(inv, f) in (None, "")]
-    if not inv.currency:
-        out.append(Issue("MISSING_FIELD", INFO, "Currency is missing.", "currency"))
-    return out
+    return [Issue("MISSING_FIELD", ERROR, f"{f.replace('_', ' ').capitalize()} is missing.", f)
+            for f in REQUIRED_FIELDS if getattr(inv, f) in (None, "")]
 
 
 def total_mismatch(inv: Invoice, today: date) -> list[Issue]:
@@ -58,9 +68,9 @@ def total_mismatch(inv: Invoice, today: date) -> list[Issue]:
     expected = inv.subtotal + inv.tax - discount
     if _close(inv.total, expected):
         return []
-    formula = f"Subtotal {inv.subtotal} + tax {inv.tax}" + (f" - discount {discount}" if discount else "")
+    formula = f"Subtotal {_m(inv.subtotal)} + tax {_m(inv.tax)}" + (f" - discount {_m(discount)}" if discount else "")
     return [Issue("TOTAL_MISMATCH", ERROR,
-                  f"{formula} = {expected}, but total is {inv.total}.",
+                  f"{formula} = {_m(expected)}, but total is {_m(inv.total)}.",
                   "total", {"expected": str(expected), "actual": str(inv.total)})]
 
 
@@ -78,7 +88,7 @@ def line_sum_mismatch(inv: Invoice, today: date) -> list[Issue]:
     if _close(s, target):
         return []
     return [Issue("LINE_SUM_MISMATCH", WARNING,
-                  f"Line items add up to {s}, but {name} is {target}.", name,
+                  f"Line items add up to {_m(s)}, but {name} is {_m(target)}.", name,
                   {"line_sum": str(s), "compared_to": name, "value": str(target)})]
 
 
@@ -90,8 +100,8 @@ def line_math_mismatch(inv: Invoice, today: date) -> list[Issue]:
         expected = li.quantity * li.unit_price
         if not _close(li.line_total, expected):
             out.append(Issue("LINE_MATH_MISMATCH", WARNING,
-                             f"Line {i + 1}: {li.quantity} x {li.unit_price} = {expected}, "
-                             f"but line total is {li.line_total}.", f"line_items[{i}]",
+                             f"Line {i + 1}: {_q(li.quantity)} x {_m(li.unit_price)} = {_m(expected)}, "
+                             f"but line total is {_m(li.line_total)}.", f"line_items[{i}]",
                              {"position": i, "expected": str(expected),
                               "actual": str(li.line_total)}))
     return out
@@ -102,7 +112,7 @@ def tax_anomaly(inv: Invoice, today: date) -> list[Issue]:
         return []
     if inv.tax < 0 or inv.tax > inv.subtotal:
         why = "negative" if inv.tax < 0 else "larger than the subtotal"
-        return [Issue("TAX_ANOMALY", WARNING, f"Tax {inv.tax} is {why}.", "tax")]
+        return [Issue("TAX_ANOMALY", WARNING, f"Tax {_m(inv.tax)} is {why}.", "tax")]
     rate = inv.tax / inv.subtotal
     if rate > MAX_TAX_RATE:
         return [Issue("TAX_ANOMALY", WARNING,
@@ -112,7 +122,7 @@ def tax_anomaly(inv: Invoice, today: date) -> list[Issue]:
 
 
 def negative_amount(inv: Invoice, today: date) -> list[Issue]:
-    return [Issue("NEGATIVE_AMOUNT", WARNING, f"{f.capitalize()} is negative ({v}); credit note?", f)
+    return [Issue("NEGATIVE_AMOUNT", WARNING, f"{f.capitalize()} is negative ({_m(v)}); credit note?", f)
             for f in ("subtotal", "total") if (v := getattr(inv, f)) is not None and v < 0]
 
 
@@ -132,7 +142,8 @@ def low_confidence(inv: Invoice, today: date) -> list[Issue]:
     return [Issue("LOW_CONFIDENCE", WARNING, f"The extraction is unsure about {f} ({c:.2f}).", f,
                   {"confidence": c})
             for f, c in sorted((inv.field_confidence or {}).items())
-            if isinstance(c, (int, float)) and c < LOW_CONFIDENCE]
+            if f in REQUIRED_FIELDS and getattr(inv, f) not in (None, "")   # vital fields only
+            and isinstance(c, (int, float)) and c < LOW_CONFIDENCE]
 
 
 RULES: dict[str, Callable[[Invoice, date], list[Issue]]] = {
@@ -198,6 +209,7 @@ def validate_invoice(db: Session, inv: Invoice, today: date | None = None) -> li
 
 def settle_document(db: Session, doc: Document) -> str:
     """completed when no invoice needs review, otherwise needs_review."""
+    db.flush()      # sessions run with autoflush off: the count below must see pending flag changes
     flagged = db.query(Invoice).filter(Invoice.document_id == doc.id,
                                        Invoice.needs_review.is_(True)).count()
     doc.status = "needs_review" if flagged else "completed"

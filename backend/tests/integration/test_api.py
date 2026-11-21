@@ -48,7 +48,7 @@ def upload(client, headers, name="a.csv", data=CSV, **form):
 
 
 def make_invoice(db, doc_id, **kw):
-    f = dict(invoice_number="INV-1", invoice_date=date(2026, 5, 1), supplier_name="ACME Ltd",
+    f = dict(invoice_number="INV-1", invoice_date=date(2026, 5, 1), supplier_name="ACME Ltd", customer_name="Client",
              subtotal=D("100"), tax=D("20"), total=D("120"), currency="EUR", supplier_norm="acme",
              invoice_number_norm="INV1")
     inv = Invoice(document_id=doc_id, **{**f, **kw})

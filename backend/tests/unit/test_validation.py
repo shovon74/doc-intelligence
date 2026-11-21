@@ -11,7 +11,7 @@ TODAY = date(2026, 6, 1)
 
 
 def make(lines=(), **kw) -> Invoice:
-    base = dict(invoice_number="INV-1", invoice_date=date(2026, 5, 1), supplier_name="ACME",
+    base = dict(invoice_number="INV-1", invoice_date=date(2026, 5, 1), supplier_name="ACME", customer_name="Client",
                 subtotal=D("100"), tax=D("20"), total=D("120"), currency="EUR",
                 supplier_norm="acme", invoice_number_norm="INV1")
     inv = Invoice(**{**base, **kw})
@@ -64,9 +64,16 @@ def test_rule_edge_cases():
     # partial data: rules skip rather than guess
     assert codes(make(tax=None)) == []
     assert codes(make(lines=[dict(quantity=None, unit_price=D(5), line_total=D(100))])) == []
-    # missing currency is info only
+    # every vital field is an error when missing; optional ones are silent
     (issue,) = engine.check_invoice(make(currency=None), TODAY)
-    assert (issue.code, issue.severity, issue.field) == ("MISSING_FIELD", "info", "currency")
+    assert (issue.code, issue.severity, issue.field) == ("MISSING_FIELD", "error", "currency")
+    (issue,) = engine.check_invoice(make(customer_name=None), TODAY)
+    assert (issue.code, issue.severity, issue.field) == ("MISSING_FIELD", "error", "customer_name")
+    assert codes(make(tax=None, discount=None, subtotal=None, lines=[])) == []
+    # low confidence matters for vital fields only
+    noisy = make(field_confidence={"tax": 0.0, "discount": 0.0, "line_items[0].quantity": 0.2,
+                                   "total": 0.3})
+    assert [(i.code, i.field) for i in engine.check_invoice(noisy, TODAY)] == [("LOW_CONFIDENCE", "total")]
     # severity of a missing required field
     (issue,) = engine.check_invoice(make(total=None, subtotal=None), TODAY)
     assert issue.severity == "error" and issue.field == "total"

@@ -97,6 +97,13 @@ Only in B" lists. An invoice that is in the ledger is paired and any differing f
 one that is not appears under "Only in A". The ledger's other rows appear under "Only in B". B can
 also be an already uploaded document.
 
+**Demo data.** `make eval` generates sample invoices into `backend/eval/dataset/` (git-ignored).
+`backend/eval/demo/ledger_demo.xlsx` (also `.csv`) is a ledger built to go with them: it contains
+`digital_01.pdf` and `image_01.png` plus six other invoices, and does not contain `digital_00.pdf`
+or `image_00.png`. Upload the invoices, then in Ledger Check pick one as A and upload the ledger as
+B: the first two pair with no differences, the last two show under "Only in A". Rebuild it with
+`python eval/make_demo_ledger.py`.
+
 ---
 
 ## Reviewing and Correcting Extractions

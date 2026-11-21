@@ -109,6 +109,7 @@ class IssueOut(ORM):
 
 
 class LineItemOut(ORM):
+    id: uuid.UUID
     position: int
     description: str | None
     quantity: Quantity | None
@@ -225,6 +226,28 @@ class InvoiceUpdate(BaseModel):
     @classmethod
     def _upper(cls, v: str | None) -> str | None:
         return v.upper() if v else v
+
+
+class ConfirmIn(BaseModel):
+    """Fields (or whole lines, e.g. "line_items[1]") the user checked and found correct."""
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(min_length=1, max_length=200)
+
+
+class LineItemUpdate(BaseModel):
+    """Only the fields that are sent are changed; null clears a field."""
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = Field(None, max_length=2000)
+    quantity: Decimal | None = Field(None, max_digits=18, decimal_places=4)
+    unit_price: Decimal | None = Field(None, max_digits=18, decimal_places=4)
+    line_total: Decimal | None = Field(None, max_digits=18, decimal_places=4)
+
+    @field_validator("description")
+    @classmethod
+    def _strip(cls, v: str | None) -> str | None:
+        return (v.strip() or None) if v is not None else None
 
 
 # ------------------------------------------------------------------ providers

@@ -97,6 +97,23 @@ appear under "Only in B".
 
 ---
 
+## Reviewing and Correcting Extractions
+
+On a document's page, every invoice-level field (number, date, supplier, customer, subtotal, tax, discount, total, currency) is editable, and the **Issues** panel lists only problems with those fields. Missing tax, discount or line items are never reported; only the vital fields (invoice number, date, supplier, customer, total, currency) raise a "missing" error.
+
+Line items are edited in place. A line that looks wrong (for example quantity x unit price does not equal the line total, or a value was not found in the document text) is highlighted with its message directly under it, with one-click suggestions such as "Set unit price to 64.00". Use **+ Add line** for lines the extraction missed and **Delete** to remove a wrong one. Every edit is saved as a correction, marks the invoice as corrected, and re-runs validation, so the warning disappears as soon as the numbers agree.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/invoices/{id}/line-items` | Add a line. |
+| `PATCH` | `/api/v1/invoices/{id}/line-items/{line_id}` | Change description, quantity, unit price or total of one line. |
+| `DELETE` | `/api/v1/invoices/{id}/line-items/{line_id}` | Remove a line. |
+| `POST` | `/api/v1/invoices/{id}/confirm` | Mark values flagged "not found in the document text" as checked. Body: `{"fields": ["total", "line_items[1]"]}`. |
+
+A value flagged as not found in the document text can be left alone with **Mark as correct** (shown next to the flag, for invoice fields and for each line) when it is right; no retyping is needed. Once nothing is flagged, the invoice and then the document move out of `needs_review`.
+
+---
+
 ## Known Limitations
 
 - **Semantic search after an embedding outage.** Extraction and embedding are separate steps. If

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, DocDetail, errMsg, IN_FLIGHT, Invoice } from './api';
+import { api, DocDetail, errMsg, IN_FLIGHT, Invoice, Issue, Line } from './api';
 import { Badge, btn, btn2, card, Err, input } from './ui';
 
 type Field = 'invoice_number' | 'invoice_date' | 'supplier_name' | 'customer_name' | 'subtotal' | 'tax' | 'discount' | 'total' | 'currency';
@@ -34,6 +34,130 @@ function Preview({ doc }: { doc: DocDetail }) {
   return <a className="text-navy underline" href={url} download={doc.original_filename}>Download {doc.original_filename}</a>;
 }
 
+/** Index of the line an issue or flag belongs to, e.g. "line_items[2].quantity" -> 2. */
+const lineIndex = (field: string | null): number | null => {
+  const m = field?.match(/^line_items\[(\d+)\]/);
+  return m ? Number(m[1]) : null;
+};
+const blankToNull = (v: string) => (v.trim() === '' ? null : v.trim());
+
+/** One editable line. Warnings for the line show right under it. */
+function LineRow({ invoiceId, line, issues, notFound, onDone, onCancel, onAccept, onConfirm }: {
+  invoiceId: string; line?: Line; issues: Issue[]; notFound: string[];
+  onDone: () => void; onCancel?: () => void; onAccept: (id: string) => void; onConfirm?: () => void;
+}) {
+  const init = {
+    description: line?.description ?? '', quantity: line?.quantity ?? '',
+    unit_price: line?.unit_price ?? '', line_total: line?.line_total ?? '',
+  };
+  const [d, setD] = useState(init);
+  const [err, setErr] = useState<string | null>(null);
+  const keys = Object.keys(init) as (keyof typeof init)[];
+  const dirty = keys.some((k) => d[k] !== init[k]);
+  const hasValue = keys.some((k) => d[k].trim() !== '');
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body: Record<string, string | null> = {};
+      keys.forEach((k) => { if (!line || d[k] !== init[k]) body[k] = blankToNull(d[k]); });
+      return line
+        ? api.patch(`/invoices/${invoiceId}/line-items/${line.id}`, body)
+        : api.post(`/invoices/${invoiceId}/line-items`, body);
+    },
+    onSuccess: () => { setErr(null); onDone(); },
+    onError: (x) => setErr(errMsg(x)),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/invoices/${invoiceId}/line-items/${line!.id}`),
+    onSuccess: onDone,
+    onError: (x) => setErr(errMsg(x)),
+  });
+
+  // Suggestions for a "quantity x price != total" warning. They fill the boxes; you still press Save.
+  const q = Number(d.quantity), t = Number(d.line_total);
+  const price = d.quantity.trim() && q !== 0 && d.line_total.trim() && Number.isFinite(t / q) ? (t / q).toFixed(2) : null;
+  const expected = Number(d.quantity) * Number(d.unit_price);
+  const canSetTotal = d.quantity.trim() !== '' && d.unit_price.trim() !== '' && Number.isFinite(expected);
+  const flagged = issues.length > 0 || notFound.length > 0;
+  const cell = `${input} ${flagged ? 'border-amber' : ''}`;
+
+  return (
+    <div className={`rounded-lg p-2 space-y-1 ${flagged ? 'bg-orange-50' : ''}`}>
+      <div className="grid grid-cols-[1fr_4.5rem_6rem_6rem_auto] gap-2 items-center">
+        <input className={cell} placeholder="Description" value={d.description}
+               onChange={(e) => setD({ ...d, description: e.target.value })} />
+        <input className={cell} placeholder="Qty" inputMode="decimal" value={d.quantity}
+               onChange={(e) => setD({ ...d, quantity: e.target.value })} />
+        <input className={cell} placeholder="Unit price" inputMode="decimal" value={d.unit_price}
+               onChange={(e) => setD({ ...d, unit_price: e.target.value })} />
+        <input className={cell} placeholder="Total" inputMode="decimal" value={d.line_total}
+               onChange={(e) => setD({ ...d, line_total: e.target.value })} />
+        <div className="flex gap-2 text-sm whitespace-nowrap">
+          <button className="text-navy underline disabled:opacity-40 disabled:no-underline"
+                  disabled={!dirty || !hasValue || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saving…' : line ? 'Save' : 'Add'}
+          </button>
+          {line
+            ? <button className="text-red-700 underline" disabled={remove.isPending}
+                      onClick={() => window.confirm('Remove this line?') && remove.mutate()}>Delete</button>
+            : <button className="text-muted underline" onClick={onCancel}>Cancel</button>}
+        </div>
+      </div>
+      {issues.map((i) => (
+        <p key={i.id} className="text-xs text-amber flex gap-x-3 flex-wrap">
+          <span>{i.message}</span>
+          {i.code === 'LINE_MATH_MISMATCH' && price && (
+            <button className="underline" onClick={() => setD({ ...d, unit_price: price })}>Set unit price to {price}</button>
+          )}
+          {i.code === 'LINE_MATH_MISMATCH' && canSetTotal && (
+            <button className="underline" onClick={() => setD({ ...d, line_total: expected.toFixed(2) })}>Set total to {expected.toFixed(2)}</button>
+          )}
+          <button className="text-muted underline" onClick={() => onAccept(i.id)}>Accept as is</button>
+        </p>
+      ))}
+      {notFound.length > 0 && (
+        <p className="text-xs text-amber flex gap-x-3 flex-wrap">
+          <span>Not found in the document text: {notFound.join(', ')}. Check this line.</span>
+          {onConfirm && <button className="underline" onClick={onConfirm}>Mark as correct</button>}
+        </p>
+      )}
+      <Err msg={err} />
+    </div>
+  );
+}
+
+function LineTable({ inv, onChanged, onAccept, onConfirm }: {
+  inv: Invoice; onChanged: () => void; onAccept: (id: string) => void; onConfirm: (fields: string[]) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center">
+        <h4 className="font-medium">Line items</h4>
+        {!adding && <button className="ml-auto text-sm text-navy underline" onClick={() => setAdding(true)}>+ Add line</button>}
+      </div>
+      {inv.line_items.length === 0 && !adding && (
+        <p className="text-xs text-muted">No line items. Add one if the document has lines that were not picked up.</p>
+      )}
+      {inv.line_items.map((l) => {
+        const flags = (inv.review_reason ?? [])
+          .filter((r) => r.startsWith('UNGROUNDED:line_items[') && lineIndex(r.slice(11)) === l.position)
+          .map((r) => r.slice(11).replace(/^line_items\[\d+\]\.?/, '') || 'line');
+        return (
+          <LineRow key={`${l.id}:${l.description}:${l.quantity}:${l.unit_price}:${l.line_total}`}
+                   invoiceId={inv.id} line={l} notFound={flags} onAccept={onAccept} onDone={onChanged}
+                   onConfirm={() => onConfirm([`line_items[${l.position}]`])}
+                   issues={inv.issues.filter((i) => !i.resolved && lineIndex(i.field) === l.position)} />
+        );
+      })}
+      {adding && (
+        <LineRow invoiceId={inv.id} issues={[]} notFound={[]} onAccept={onAccept}
+                 onDone={() => { setAdding(false); onChanged(); }} onCancel={() => setAdding(false)} />
+      )}
+    </div>
+  );
+}
+
 function InvoiceCard({ inv, onChanged }: { inv: Invoice; onChanged: () => void }) {
   const [form, setForm] = useState<Record<string, string>>(
     Object.fromEntries(FIELDS.map(([k]) => [k, inv[k] ?? ''])));
@@ -53,8 +177,17 @@ function InvoiceCard({ inv, onChanged }: { inv: Invoice; onChanged: () => void }
     onSuccess: onChanged,
     onError: (x) => setErr(errMsg(x)),
   });
+  const confirm = useMutation({
+    mutationFn: (fields: string[]) => api.post(`/invoices/${inv.id}/confirm`, { fields }),
+    onSuccess: onChanged,
+    onError: (x) => setErr(errMsg(x)),
+  });
   const dirty = FIELDS.some(([k]) => form[k] !== (inv[k] ?? ''));
-  const issues = [...inv.issues].sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
+  const headerUngrounded = (inv.review_reason ?? [])
+    .filter((r) => r.startsWith('UNGROUNDED:') && !r.startsWith('UNGROUNDED:line_items'))
+    .map((r) => r.slice(11));
+  // The Issues panel is for invoice-level fields; line problems show on their own row.
+  const issues = inv.issues.filter((i) => lineIndex(i.field) === null).sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
 
   return (
     <div className={`${card} space-y-4`}>
@@ -91,25 +224,16 @@ function InvoiceCard({ inv, onChanged }: { inv: Invoice; onChanged: () => void }
           ))}
         </div>
       )}
-      {inv.review_reason?.some((r) => r.startsWith('UNGROUNDED:')) && (
-        <p className="text-sm text-amber">
-          Not found in the document text: {inv.review_reason.filter((r) => r.startsWith('UNGROUNDED:'))
-            .map((r) => r.slice(11)).join(', ')}. Check and correct these values.
+      {headerUngrounded.length > 0 && (
+        <p className="text-sm text-amber flex gap-x-3 flex-wrap">
+          <span>Not found in the document text: {headerUngrounded.join(', ')}. Check and correct these values.</span>
+          <button className="underline" disabled={confirm.isPending}
+                  onClick={() => confirm.mutate(headerUngrounded)}>Mark as correct</button>
         </p>
       )}
 
-      {inv.line_items.length > 0 && (
-        <table className="w-full text-sm">
-          <thead className="text-left text-muted"><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead>
-          <tbody>
-            {inv.line_items.map((l) => (
-              <tr key={l.position} className="border-t border-panel">
-                <td className="py-1">{l.description}</td><td>{l.quantity}</td><td>{l.unit_price}</td><td>{l.line_total}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <LineTable inv={inv} onChanged={onChanged} onAccept={(id) => resolve.mutate(id)}
+                 onConfirm={(fields) => confirm.mutate(fields)} />
     </div>
   );
 }

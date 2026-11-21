@@ -40,12 +40,14 @@ export interface Doc {
 export interface Issue {
   id: string;
   code: string;
+  details?: { expected?: string; actual?: string } | null;
   severity: 'error' | 'warning' | 'info';
   field: string | null;
   message: string;
   resolved: boolean;
 }
 export interface Line {
+  id: string;
   position: number;
   description: string | null;
   quantity: string | null;

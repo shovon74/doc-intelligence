@@ -88,14 +88,31 @@ def retry(call, *a, **k):
     return call(*a, **k)
 
 
+def pick_subset(labels: list[dict], n: int) -> list[dict]:
+    """Take n documents, one kind at a time, so every kind is represented. Skips the large PDF."""
+    by_kind: dict[str, list[dict]] = defaultdict(list)
+    for lab in labels:
+        if lab["kind"] != "large":
+            by_kind[lab["kind"]].append(lab)
+    chosen: list[dict] = []
+    while len(chosen) < n and any(by_kind.values()):
+        for kind in list(by_kind):
+            if by_kind[kind] and len(chosen) < n:
+                chosen.append(by_kind[kind].pop(0))
+    return chosen
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://api:8000")
     ap.add_argument("--provider", default="gemini")
     ap.add_argument("--timeout", type=int, default=1500)
+    ap.add_argument("--limit", type=int, default=0, help="evaluate at most N documents (0 = all)")
     args = ap.parse_args()
     api = args.api.rstrip("/") + "/api/v1"
     labels = json.loads((DATASET / "labels.json").read_text())
+    if args.limit:
+        labels = pick_subset(labels, args.limit)
 
     http = httpx.Client(timeout=120)
     email, pw = f"eval-{uuid.uuid4().hex[:8]}@example.com", "eval-password-1"
@@ -113,6 +130,9 @@ def main() -> None:
             body = r.json()
             if r.status_code == 202 and body["documents"]:
                 ids[lab["file"]] = body["documents"][0]["id"]
+                # Uploads only store the file; processing starts with a separate call.
+                http.post(f"{api}/documents/{ids[lab['file']]}/reprocess",
+                          json={"llm_provider": args.provider}).raise_for_status()
             else:
                 rejected[lab["file"]] = json.dumps(body)[:200]
 

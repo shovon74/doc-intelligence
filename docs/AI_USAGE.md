@@ -1,38 +1,63 @@
 # AI-Assisted Development Disclosure
 
-In accordance with Deliverable 9 of the Document Intelligence System assignment:
+This covers deliverable 9 of the assignment: the AI prompts and a disclosure of AI-assisted development.
 
-## 1. Development Tools Used
-- **Agent Environment**: Antigravity IDE (powered by Gemini models).
-- **Role of the AI Assistant**:
-  - Scaffolding repository layout, Docker Compose setup, and Alembic configuration.
-  - Implementing document processing pipelines (PDF PyMuPDF, OCR deskew/denoise, multi-sheet Excel/CSV parsing).
-  - Building Pydantic schema-constrained LLM provider abstractions for OpenAI and Gemini.
-  - Implementing validation rules engine, duplicate detection, and cross-verification.
-  - Designing and implementing REST APIs (FastAPI) and Celery background workers.
-  - Developing React/Vite/TypeScript frontend.
-  - Generating synthetic test datasets and automated test coverage.
-- **Role of the Human Reviewer**:
-  - Validated architectural decisions and compliance with the 5-day take-home specification.
-  - Reviewed test assertions, ground-truth labels, and performance/resilience under corrupted files.
-  - Supervised prompt design, anti-hallucination grounding verifications, and evaluation metrics.
+## 1. Development tools
 
-## 2. Runtime AI Models & Usage
-- **Extraction Providers**:
-  - OpenAI: `gpt-4o-mini` (or configurable model, e.g., `gpt-4.1` / `gpt-4o`) via structured outputs (`json_schema`).
-  - Google Gemini: `gemini-2.5-flash` via structured outputs (`response_schema`).
-- **Embedding Models**:
-  - OpenAI: `text-embedding-3-small` (dimension 768).
-  - Google Gemini: `gemini-embedding-001` (dimension 768).
-- **Guardrails**:
-  - Strict zero-shot structured extraction prompts forbidding value invention or guessing.
-  - Deterministic grounding validator verifying field evidence substrings against raw text.
-  - Strict fallback to `null` on missing/uncertain information.
+- **Claude Code** (Anthropic) was the main coding assistant for the backend, frontend, tests, evaluation tooling and documentation.
+- **Antigravity IDE** (Gemini models) was used for the first scaffolding phase.
 
-## 3. Phase Log
-- **Phase 0 — Scaffold & Infrastructure**: Completed and verified.
-  - Setup multi-container environment (PostgreSQL 16 + pgvector, Redis 7, FastAPI 0.115, Celery 5.4, Vite/React 18/TypeScript/Tailwind).
-  - Configured Alembic migration `0001_create_pgvector_extension` and verified pgvector extension activation.
-  - Implemented `/api/v1/health` verifying DB connectivity, Redis ping, Tesseract 5.5.0, and dynamic LLM provider status.
-  - Created initial test harness (`conftest.py`, `test_health.py`) running via `pytest` inside the Docker environment.
-  - All acceptance criteria passed (HTTP 200 on `/api/v1/health`, `/docs`, and frontend).
+### What the AI assistant did
+- Wrote most of the code: Docker setup, processing pipelines (PDF, OCR, spreadsheets), LLM provider layer, extraction and grounding, validation rules, REST API, Celery tasks, search, React frontend.
+- Wrote the automated tests and the synthetic evaluation dataset generator.
+- Drafted the documentation in this repository.
+
+### What the human did
+- Set the scope, priorities and the work-package order, and decided what to cut or defer.
+- Chose the design: Gemini as the default provider, manual start with consent, the Ledger Check feature, which fields count as vital.
+- Ran the application, the tests and the evaluation, and reported problems back. Several bugs were found this way, for example:
+  - OCR failed on every scan and image under OpenCV 5.
+  - Correct line items were flagged "not found in the document text".
+  - Extra rows in a ledger made a Ledger Check a mismatch.
+  - The evaluation script never started documents after upload (processing had become a manual step).
+- Reviewed the evaluation results and decided how to report them, including the limits of a 10-document sample.
+
+## 2. Runtime AI models
+
+| Use | Model | Notes |
+|---|---|---|
+| Extraction (default) | Google `gemini-2.5-flash` | Set with `GEMINI_MODEL` or in the UI. |
+| Extraction (optional) | OpenAI `gpt-4o-mini` | Set `LLM_PROVIDER=openai` or choose it in the UI. The evaluation in `docs/EVALUATION.md` used this model. |
+| Embeddings (default) | Google `gemini-embedding-001`, 768 dims | `EMBEDDING_PROVIDER` should stay fixed. |
+| Embeddings (optional) | OpenAI `text-embedding-3-small`, 768 dims | |
+| Tests | Built-in fake provider and fake embedder | No network or key needed. |
+
+Document text is sent to the chosen provider only after the user starts processing.
+
+## 3. Guardrails against wrong AI output
+
+- The prompt forbids guessing: a missing or ambiguous value must be `null`.
+- Every extracted value must come with a verbatim snippet. A deterministic grounding check confirms the snippet appears in the document text; otherwise the value gets low confidence and a review flag.
+- Arithmetic is never done by the model. Validation rules in code check totals, line sums and line math.
+- Anything doubtful is flagged for manual review, and every manual edit is stored as a correction.
+- The model is told to treat document text as data and to ignore instructions inside it.
+- The model is called at temperature 0 in JSON mode, and the reply is validated.
+
+## 4. Prompts
+The runtime prompts and a summary of the development prompts are in [prompts.md](prompts.md).
+
+## 5. Work log
+
+| Work package | Content |
+|---|---|
+| Scaffold, database | Multi-container setup, health checks, models and migrations. |
+| WP1 Processing | Error codes, PDF/OCR/spreadsheet pipelines, streaming upload, limits, page batching, retries. |
+| WP2 Extraction | LLM provider layer, fake provider, extraction, grounding. |
+| WP3 Validation | Validation rules, duplicate detection, cross-check API. |
+| WP4 API | REST endpoints, JWT auth, security hardening. |
+| WP5 Search | Indexing, keyword and semantic search. |
+| WP6 Frontend | Login, upload, dashboard, detail editing, search. |
+| WP7 Tests | Gap-filling tests; 225 tests, 95% coverage (`docs/test-results/`). |
+| WP8 Evaluation | Dataset generator, runner, report (`docs/EVALUATION.md`). |
+| Later changes | Manual start, discount-aware totals, UI-configured LLM key, inline line-item editing, Ledger Check and demo ledger. |
+| WP9 Documentation | README, architecture, database, prompts, this disclosure. |

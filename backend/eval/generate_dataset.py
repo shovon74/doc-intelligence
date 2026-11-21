@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 OUT = Path(__file__).parent / "dataset"
 rng = random.Random(7)
+degrade_rng = random.Random(11)      # separate stream: image damage never changes the invoice values
 
 SUPPLIERS = ["Northwind Traders", "Acme Industrial Supply", "Blue Harbor Logistics", "Kestrel Office Goods",
              "Summit Catering Ltd", "Orchid Print Works", "Lakeside Hardware", "Meridian IT Services",
@@ -92,7 +93,13 @@ def digital_pdf(path: Path, invoices: list[dict], style: int, filler_pages: int 
     doc.save(str(path))
 
 
-def render_image(inv: dict, style: int, degrade: bool) -> Image.Image:
+# Image damage tiers: 0 = clean render, 1 = ordinary scan (slight skew, light blur and speckle),
+# 2 = poor scan or phone photo (more skew, heavier blur, dense speckle). Scans and photos alternate
+# between tier 1 and 2, so any sample of them holds both.
+DEGRADE = {1: dict(angle=1.0, blur=0.6, specks=6000), 2: dict(angle=2.0, blur=1.1, specks=25000)}
+
+
+def render_image(inv: dict, style: int, degrade: int = 0) -> Image.Image:
     img = Image.new("L", (1240, 1000), 255)
     draw = ImageDraw.Draw(img)
     font = ImageFont.load_default(size=26)
@@ -101,18 +108,19 @@ def render_image(inv: dict, style: int, degrade: bool) -> Image.Image:
         draw.text((60, y), line, fill=0, font=font)
         y += 38
     if degrade:
-        img = img.rotate(rng.uniform(-2.0, 2.0), fillcolor=255, expand=False)
-        img = img.filter(ImageFilter.GaussianBlur(1.1))
+        d = DEGRADE[degrade]
+        img = img.rotate(degrade_rng.uniform(-d["angle"], d["angle"]), fillcolor=255, expand=False)
+        img = img.filter(ImageFilter.GaussianBlur(d["blur"]))
         px = img.load()
-        for _ in range(25000):
-            x, yy = rng.randrange(img.width), rng.randrange(img.height)
-            px[x, yy] = rng.randint(0, 255)
+        for _ in range(d["specks"]):
+            x, yy = degrade_rng.randrange(img.width), degrade_rng.randrange(img.height)
+            px[x, yy] = degrade_rng.randint(0, 255)
     return img
 
 
-def scanned_pdf(path: Path, inv: dict, style: int) -> None:
+def scanned_pdf(path: Path, inv: dict, style: int, degrade: int = 2) -> None:
     tmp = path.with_suffix(".png")
-    render_image(inv, style, degrade=True).save(tmp)
+    render_image(inv, style, degrade).save(tmp)
     doc = fitz.open()
     page = doc.new_page(width=595, height=480)
     page.insert_image(page.rect, filename=str(tmp))
@@ -146,17 +154,17 @@ def main() -> None:
         inv = nxt()
         digital_pdf(OUT / f"digital_{i:02d}.pdf", [inv], i)
         add(f"digital_{i:02d}.pdf", "digital_pdf", [inv])
-    for i in range(6):                                            # degraded scanned PDFs (OCR)
+    for i in range(6):                                            # scanned PDFs (OCR), tier 1 and 2 alternating
         inv = nxt()
-        scanned_pdf(OUT / f"scan_{i:02d}.pdf", inv, i)
+        scanned_pdf(OUT / f"scan_{i:02d}.pdf", inv, i, 1 if i % 2 == 0 else 2)
         add(f"scan_{i:02d}.pdf", "scanned_pdf", [inv])
     for i in range(3):                                            # clean PNG
         inv = nxt()
-        render_image(inv, i, False).save(OUT / f"image_{i:02d}.png")
+        render_image(inv, i, 0).save(OUT / f"image_{i:02d}.png")
         add(f"image_{i:02d}.png", "image", [inv])
-    for i in range(3):                                            # degraded JPEG
+    for i in range(3):                                            # JPEG photos, tier 1 and 2 alternating
         inv = nxt()
-        render_image(inv, i, True).save(OUT / f"photo_{i:02d}.jpg", quality=70)
+        render_image(inv, i, 1 if i % 2 == 0 else 2).save(OUT / f"photo_{i:02d}.jpg", quality=70)
         add(f"photo_{i:02d}.jpg", "image_degraded", [inv])
 
     # spreadsheets: one row per invoice

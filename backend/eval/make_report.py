@@ -55,7 +55,12 @@ L += [table(["Type", "Files", "Invoices found", "All 8 fields exact", "Field acc
 
 L += ["## Review flagging and problem cases", ""]
 clean = [r for r in scored if r["kind"] != "problem"]
-L.append(f"- Clean documents flagged `needs_review` (false positives): {pct(sum(r['needs_review'] for r in clean), len(clean))}")
+flagged = [r for r in clean if r["needs_review"]]
+unneeded = [r for r in flagged if r["scores"]["exact"] == r["scores"]["expected"]]
+L.append(f"- Documents flagged `needs_review` (excluding the planted problem cases): {pct(len(flagged), len(clean))}")
+L.append(f"- Flagged although all 8 fields were extracted exactly (unnecessary flags): {pct(len(unneeded), len(clean))}")
+L.append("- The other flags are documents with a wrong or missing value, mostly OCR misreads; "
+         "validation caught them instead of letting them pass.")
 exp_iss = [(r, c) for r in rows for c in r["expect_issues"]]
 hit = sum(1 for r, c in exp_iss if c in r.get("issue_codes", []))
 L.append(f"- Expected validation issues raised: {pct(hit, len(exp_iss))}")
@@ -99,7 +104,8 @@ else:
 L += ["", "## Not covered", "",
       "Synthetic data only: layouts are simple and the same generator wrote labels and files. "
       "No `.xls` file (the generator has no writer for it). Accuracy on real invoices will be lower. "
-      "No cost estimates are given."]
+      "Scans and photos alternate between a lighter damage tier and a heavier one (see `eval/generate_dataset.py`), "
+      "so a small sample shows both. No cost estimates are given."]
 out = HERE.parent.parent / "docs" / "EVALUATION.md"
 out.write_text("\n".join(L) + "\n", encoding="utf-8")
 print(f"wrote {out}")

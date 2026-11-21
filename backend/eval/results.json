@@ -1,0 +1,659 @@
+{
+ "generated_at": "2026-11-21T10:30:26",
+ "provider": "openai",
+ "files": 10,
+ "wall_clock_seconds": 70.0,
+ "rows": [
+  {
+   "file": "digital_00.pdf",
+   "kind": "digital_pdf",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 57.4,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [],
+   "tokens_in": 638,
+   "tokens_out": 546,
+   "llm_latency_ms": 6596,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 0
+  },
+  {
+   "file": "scan_00.pdf",
+   "kind": "scanned_pdf",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 60.5,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [],
+   "tokens_in": 612,
+   "tokens_out": 542,
+   "llm_latency_ms": 5711,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 1
+  },
+  {
+   "file": "image_00.png",
+   "kind": "image",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 58.2,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [],
+   "tokens_in": 596,
+   "tokens_out": 431,
+   "llm_latency_ms": 5548,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 1
+  },
+  {
+   "file": "photo_00.jpg",
+   "kind": "image_degraded",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 61.5,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [],
+   "tokens_in": 636,
+   "tokens_out": 595,
+   "llm_latency_ms": 6871,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 1
+  },
+  {
+   "file": "invoices.csv",
+   "kind": "csv",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 58.8,
+   "pages": 1,
+   "scores": {
+    "expected": 5,
+    "found": 5,
+    "exact": 5,
+    "extracted": 5,
+    "fields": {
+     "invoice_number": [
+      5,
+      5
+     ],
+     "invoice_date": [
+      5,
+      5
+     ],
+     "supplier_name": [
+      5,
+      5
+     ],
+     "customer_name": [
+      5,
+      5
+     ],
+     "subtotal": [
+      5,
+      5
+     ],
+     "tax": [
+      5,
+      5
+     ],
+     "total": [
+      5,
+      5
+     ],
+     "currency": [
+      5,
+      5
+     ]
+    },
+    "misses": [],
+    "lines_ok": 0,
+    "lines_n": 0
+   },
+   "issue_codes": [],
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "llm_latency_ms": 0,
+   "models": [
+    "spreadsheet/heuristic"
+   ],
+   "needs_review": false,
+   "ocr_pages": 0
+  },
+  {
+   "file": "invoices_a.xlsx",
+   "kind": "xlsx",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 58.6,
+   "pages": 1,
+   "scores": {
+    "expected": 5,
+    "found": 5,
+    "exact": 5,
+    "extracted": 5,
+    "fields": {
+     "invoice_number": [
+      5,
+      5
+     ],
+     "invoice_date": [
+      5,
+      5
+     ],
+     "supplier_name": [
+      5,
+      5
+     ],
+     "customer_name": [
+      5,
+      5
+     ],
+     "subtotal": [
+      5,
+      5
+     ],
+     "tax": [
+      5,
+      5
+     ],
+     "total": [
+      5,
+      5
+     ],
+     "currency": [
+      5,
+      5
+     ]
+    },
+    "misses": [],
+    "lines_ok": 0,
+    "lines_n": 0
+   },
+   "issue_codes": [],
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "llm_latency_ms": 0,
+   "models": [
+    "spreadsheet/heuristic"
+   ],
+   "needs_review": false,
+   "ocr_pages": 0
+  },
+  {
+   "file": "problem_wrong_total.pdf",
+   "kind": "problem",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [
+    "TOTAL_MISMATCH"
+   ],
+   "status": "needs_review",
+   "error_code": null,
+   "seconds": 59.3,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [
+    "TOTAL_MISMATCH"
+   ],
+   "tokens_in": 615,
+   "tokens_out": 523,
+   "llm_latency_ms": 5795,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": true,
+   "ocr_pages": 0
+  },
+  {
+   "file": "multi_two_invoices.pdf",
+   "kind": "multi_invoice",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 59.5,
+   "pages": 2,
+   "scores": {
+    "expected": 2,
+    "found": 2,
+    "exact": 2,
+    "extracted": 2,
+    "fields": {
+     "invoice_number": [
+      2,
+      2
+     ],
+     "invoice_date": [
+      2,
+      2
+     ],
+     "supplier_name": [
+      2,
+      2
+     ],
+     "customer_name": [
+      2,
+      2
+     ],
+     "subtotal": [
+      2,
+      2
+     ],
+     "tax": [
+      2,
+      2
+     ],
+     "total": [
+      2,
+      2
+     ],
+     "currency": [
+      2,
+      2
+     ]
+    },
+    "misses": [],
+    "lines_ok": 2,
+    "lines_n": 2
+   },
+   "issue_codes": [],
+   "tokens_in": 1244,
+   "tokens_out": 1026,
+   "llm_latency_ms": 12481,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 0
+  },
+  {
+   "file": "digital_01.pdf",
+   "kind": "digital_pdf",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "completed",
+   "error_code": null,
+   "seconds": 59.7,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 1,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      1,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      1,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [],
+    "lines_ok": 1,
+    "lines_n": 1
+   },
+   "issue_codes": [],
+   "tokens_in": 619,
+   "tokens_out": 530,
+   "llm_latency_ms": 12759,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": false,
+   "ocr_pages": 0
+  },
+  {
+   "file": "scan_01.pdf",
+   "kind": "scanned_pdf",
+   "expect_status": "completed",
+   "expect_error_code": null,
+   "expect_issues": [],
+   "status": "needs_review",
+   "error_code": null,
+   "seconds": 63.2,
+   "pages": 1,
+   "scores": {
+    "expected": 1,
+    "found": 1,
+    "exact": 0,
+    "extracted": 1,
+    "fields": {
+     "invoice_number": [
+      1,
+      1
+     ],
+     "invoice_date": [
+      0,
+      1
+     ],
+     "supplier_name": [
+      1,
+      1
+     ],
+     "customer_name": [
+      0,
+      1
+     ],
+     "subtotal": [
+      1,
+      1
+     ],
+     "tax": [
+      1,
+      1
+     ],
+     "total": [
+      1,
+      1
+     ],
+     "currency": [
+      1,
+      1
+     ]
+    },
+    "misses": [
+     [
+      "INV-20250012",
+      "invoice_date",
+      "2025-03-27",
+      null
+     ],
+     [
+      "INV-20250012",
+      "customer_name",
+      "Bright Path Clinic",
+      "Bright Path"
+     ]
+    ],
+    "lines_ok": 0,
+    "lines_n": 1
+   },
+   "issue_codes": [
+    "LINE_MATH_MISMATCH",
+    "LINE_SUM_MISMATCH",
+    "MISSING_FIELD"
+   ],
+   "tokens_in": 625,
+   "tokens_out": 435,
+   "llm_latency_ms": 6580,
+   "models": [
+    "openai/gpt-4o-mini"
+   ],
+   "needs_review": true,
+   "ocr_pages": 1
+  }
+ ]
+}

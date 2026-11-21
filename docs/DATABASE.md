@@ -6,6 +6,8 @@
 erDiagram
     users ||--o{ documents : owns
     users ||--o{ corrections : performs
+    users ||--o{ crosschecks : runs
+    documents ||--o{ crosschecks : compared_in
     documents ||--o{ document_pages : contains
     documents ||--o{ invoices : extracts
     documents ||--o{ validation_issues : flags
@@ -68,6 +70,7 @@ erDiagram
         string customer_name
         numeric subtotal
         numeric tax
+        numeric discount
         numeric total
         string currency
         string supplier_norm
@@ -123,6 +126,16 @@ erDiagram
         timestamp created_at
     }
 
+    crosschecks {
+        uuid id PK
+        uuid user_id FK
+        uuid document_a_id FK
+        uuid document_b_id FK
+        string status
+        jsonb result
+        timestamp created_at
+    }
+
     processing_events {
         uuid id PK
         uuid document_id FK
@@ -148,8 +161,16 @@ erDiagram
 ```
 
 ## Key Indexes
-- `documents(user_id, status)`: Fast filtered retrieval of documents.
-- `documents(sha256)`: Instant duplicate file detection.
-- `invoices(user_id, supplier_norm, invoice_number_norm)`: Normalized cross-document duplicate invoice detection.
+- `documents(user_id, status)`: filtered document lists.
+- `documents(sha256)`: duplicate file detection.
+- `invoices(supplier_norm, invoice_number_norm)`: duplicate invoice detection across documents. Every query also filters by the owner through `documents.user_id`.
+- `invoices(invoice_date)`, `invoices(total)`: date and amount filters.
 - `document_chunks.tsv`: PostgreSQL GIN index for full-text search.
 - `document_chunks.embedding`: HNSW cosine index for pgvector semantic search (`vector_cosine_ops`).
+
+## Notes
+- Money is `NUMERIC(18,4)`; the API returns two decimals.
+- `crosschecks.result` holds the whole comparison (summary, pairs, only-in-A, only-in-B) as JSON, so a saved result is returned as it was computed.
+- `corrections` is an audit trail: every manual edit stores the old and new value.
+- `document_chunks.embedding_provider` and `embedding_model` record which model made each vector; semantic search only uses vectors from the active model.
+- Migrations: `0001` pgvector extension, `0002` core tables, `0003` crosschecks, `0004` invoice discount.

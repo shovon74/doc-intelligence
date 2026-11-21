@@ -3,11 +3,18 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
 T = TypeVar("T")
+
+
+# The database keeps 4 decimals; API output shows money with 2 and quantities without trailing zeros.
+Money = Annotated[Decimal, PlainSerializer(lambda v: f"{v:.2f}", return_type=str, when_used="json")]
+Quantity = Annotated[Decimal, PlainSerializer(lambda v: format(v.normalize(), "f"), return_type=str,
+                                              when_used="json")]
 
 
 class ORM(BaseModel):
@@ -104,9 +111,9 @@ class IssueOut(ORM):
 class LineItemOut(ORM):
     position: int
     description: str | None
-    quantity: Decimal | None
-    unit_price: Decimal | None
-    line_total: Decimal | None
+    quantity: Quantity | None
+    unit_price: Money | None
+    line_total: Money | None
     tax_rate: Decimal | None
 
 
@@ -124,10 +131,10 @@ class InvoiceSummary(ORM):
     invoice_date: date | None
     supplier_name: str | None
     customer_name: str | None
-    subtotal: Decimal | None
-    tax: Decimal | None
-    discount: Decimal | None = None
-    total: Decimal | None
+    subtotal: Money | None
+    tax: Money | None
+    discount: Money | None = None
+    total: Money | None
     currency: str | None
     needs_review: bool
     review_reason: list[str] | None

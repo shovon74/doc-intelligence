@@ -197,8 +197,8 @@ export default function Crosscheck() {
           ))}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <OnlyList title="Only in A" items={r.only_in_a} />
-            <OnlyList title="Only in B" items={r.only_in_b} />
+            <OnlyList title="Only in A (not found in B)" items={r.only_in_a} />
+            <OnlyList title="Only in B (other rows, not checked)" items={r.only_in_b} />
           </div>
         </div>
       )}

@@ -134,6 +134,18 @@ def test_crosscheck_pairs_lone_invoices_and_flags_number_and_line_count():
 
 
 @pytest.mark.unit
+def test_crosscheck_extra_rows_in_b_do_not_fail_the_check():
+    """A ledger has many other invoices; only A's invoices must be found and agree."""
+    a = [make(invoice_number="INV-1", invoice_number_norm="INV1")]
+    b = [make(invoice_number="INV-1", invoice_number_norm="INV1"),
+         make(invoice_number="INV-7", invoice_number_norm="INV7"),
+         make(invoice_number="INV-8", invoice_number_norm="INV8")]
+    r = compare_invoices(a, b)
+    assert r["status"] == "match" and r["summary"]["only_in_b"] == 2
+    assert compare_invoices(a, b[1:])["status"] == "mismatch"      # A's invoice is missing from B
+
+
+@pytest.mark.unit
 def test_crosscheck_missing_value_on_one_side_is_a_difference():
     r = compare_invoices([make()], [make(customer_name="Zed", tax=None)])
     assert {d["field"] for d in r["pairs"][0]["differences"]} == {"customer_name", "tax"}

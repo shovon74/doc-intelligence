@@ -40,6 +40,10 @@ def _show(v) -> str | None:
     return None if v is None else str(v)
 
 
+def _show_money(v) -> str | None:
+    return None if v is None else f"{v:.2f}"
+
+
 def _pair_up(a: list[Invoice], b: list[Invoice]) -> tuple[list[tuple], list[Invoice], list[Invoice]]:
     pairs: list[tuple[Invoice, Invoice]] = []
     left_a, left_b = list(a), list(b)
@@ -89,7 +93,7 @@ def _differences(x: Invoice, y: Invoice) -> list[dict]:
 
 def _ref(inv: Invoice) -> dict:
     return {"invoice_id": str(inv.id), "invoice_number": inv.invoice_number,
-            "supplier_name": inv.supplier_name, "total": _show(inv.total)}
+            "supplier_name": inv.supplier_name, "total": _show_money(inv.total)}
 
 
 def compare_invoices(a: list[Invoice], b: list[Invoice]) -> dict:
@@ -97,7 +101,9 @@ def compare_invoices(a: list[Invoice], b: list[Invoice]) -> dict:
     out_pairs = [{"a": _ref(x), "b": _ref(y), "differences": _differences(x, y)}
                  for x, y in pairs]
     n_diff = sum(len(p["differences"]) for p in out_pairs)
-    matched = all(not p["differences"] for p in out_pairs) and not only_a and not only_b
+    # Invoices only in B (the other rows of a ledger) do not count against the check: the question is
+    # whether everything in A is in B and agrees.
+    matched = all(not p["differences"] for p in out_pairs) and not only_a
     return {
         "status": "match" if matched else "mismatch",
         "summary": {"invoices_a": len(a), "invoices_b": len(b), "paired": len(pairs),

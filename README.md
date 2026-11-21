@@ -64,6 +64,9 @@ combination of formats works.
 (numbers are compared ignoring case and punctuation). If exactly one unpaired invoice is left on
 each side they are paired anyway, so a mistyped invoice number shows up as a difference.
 
+**Status.** `match` when every invoice in A has a partner in B and no field differs; otherwise
+`mismatch`. Invoices only in B (the rest of a ledger) are listed but never cause a mismatch.
+
 **Compared fields.** Invoice number, supplier, customer, date, subtotal, tax, total, currency and
 line items (count, quantity, unit price, line total). Amounts use the same tolerance as validation.
 

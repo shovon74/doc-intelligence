@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { api, Doc, errMsg, Page } from './api';
+import { api, Doc, errMsg, IN_FLIGHT, Page } from './api';
 import { btn, card, Err, input } from './ui';
 
 interface Ref {
@@ -41,6 +41,9 @@ function OnlyList({ title, items }: { title: string; items: Ref[] }) {
 export default function Crosscheck() {
   const [a, setA] = useState('');
   const [b, setB] = useState('');
+  const [mode, setMode] = useState<'upload' | 'existing'>('upload');
+  const [ledger, setLedger] = useState<File | null>(null);
+  const [step, setStep] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
@@ -52,17 +55,47 @@ export default function Crosscheck() {
   const ready = (docs.data ?? []).filter((d) => d.status === 'completed' || d.status === 'needs_review');
   const name = (id: string) => ready.find((d) => d.id === id)?.original_filename ?? id;
 
+  // Upload the ledger, process it, and wait until its invoices are extracted.
+  const prepareLedger = async (file: File): Promise<string> => {
+    setStep('Uploading ledger…');
+    const form = new FormData();
+    form.append('files', file);
+    const { data } = await api.post('/documents', form);
+    if (data.rejected?.length) throw new Error(data.rejected[0].message);
+    const doc = data.documents[0] as { id: string; status: string };
+    let status = doc.status;
+    if (status === 'uploaded' || status === 'failed') {
+      await api.post(`/documents/${doc.id}/reprocess`);
+      status = 'queued';
+    }
+    setStep('Reading ledger rows…');
+    const deadline = Date.now() + 5 * 60_000;
+    while (IN_FLIGHT.includes(status) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const st = (await api.get(`/documents/${doc.id}/status`)).data;
+      status = st.status;
+      if (status === 'failed') throw new Error(st.error_message ?? 'The ledger could not be processed.');
+    }
+    if (status === 'failed') throw new Error('The ledger could not be processed.');
+    if (IN_FLIGHT.includes(status)) throw new Error('The ledger is still processing. Try again in a moment.');
+    return doc.id;
+  };
+
   const compare = async () => {
     setErr(null);
     setCheck(null);
     setBusy(true);
     try {
-      const { data } = await api.post<Check>('/crosscheck', { document_a_id: a, document_b_id: b });
+      const bId = mode === 'upload' && ledger ? await prepareLedger(ledger) : b;
+      setStep('Comparing…');
+      const { data } = await api.post<Check>('/crosscheck', { document_a_id: a, document_b_id: bId });
       setCheck(data);
+      docs.refetch();
     } catch (x) {
-      setErr(errMsg(x));
+      setErr(x instanceof Error ? x.message : errMsg(x));
     } finally {
       setBusy(false);
+      setStep(null);
     }
   };
 
@@ -81,20 +114,38 @@ export default function Crosscheck() {
     <div className="space-y-6 max-w-5xl">
       <div className={`${card} p-8 space-y-4`}>
         <p className="text-sm text-muted">
-          Pick two processed documents, for example an invoice PDF and a spreadsheet of the same invoices.
+          Pick an invoice that is already in the system, then upload the ledger (XLSX or CSV) to check it against.
           Invoices are paired by invoice number and supplier, then every field is compared.
         </p>
-        <div className="flex gap-4 flex-wrap">
-          {picker(a, setA, 'Document A')}
-          {picker(b, setB, 'Document B')}
+        <div className="flex gap-4 flex-wrap items-start">
+          {picker(a, setA, 'Invoice in the system (A)')}
+          <div className="flex-1 text-sm font-medium">
+            <div className="flex items-center gap-3">
+              <span>Ledger to check against (B)</span>
+              <button type="button" className="ml-auto text-xs text-muted underline"
+                      onClick={() => setMode(mode === 'upload' ? 'existing' : 'upload')}>
+                {mode === 'upload' ? 'Use an already uploaded document' : 'Upload a ledger file'}
+              </button>
+            </div>
+            {mode === 'upload' ? (
+              <input className={`${input} mt-2`} type="file" accept=".xlsx,.xls,.csv"
+                     onChange={(e) => setLedger(e.target.files?.[0] ?? null)} />
+            ) : (
+              <select className={`${input} mt-2`} value={b} onChange={(e) => setB(e.target.value)}>
+                <option value="">Choose a document…</option>
+                {ready.map((d) => <option key={d.id} value={d.id}>{d.original_filename}</option>)}
+              </select>
+            )}
+            {mode === 'upload' && (
+              <p className="text-xs text-muted mt-1 font-normal">XLSX, XLS or CSV export from your CRM or ledger.</p>
+            )}
+          </div>
         </div>
-        {docs.data && ready.length < 2 && (
-          <p className="text-xs text-muted">Upload and process at least two documents to compare them.</p>
-        )}
-        <button className={`${btn} px-8`} onClick={compare} disabled={!a || !b || a === b || busy}>
-          {busy ? 'Comparing…' : 'Compare'}
+        <button className={`${btn} px-8`} onClick={compare}
+                disabled={!a || busy || (mode === 'upload' ? !ledger : !b || a === b)}>
+          {busy ? step ?? 'Working…' : 'Compare'}
         </button>
-        {a && a === b && <p className="text-xs text-muted">Choose two different documents.</p>}
+        {mode === 'existing' && a && a === b && <p className="text-xs text-muted">Choose two different documents.</p>}
       </div>
 
       <Err msg={err} />

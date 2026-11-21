@@ -2,7 +2,7 @@
 
 A document intelligence system that extracts, validates and searches financial documents: PDFs (up to 1,000 pages), scans and photos, multi-sheet Excel files and CSVs.
 
-**Walkthrough video:** _link to be added_
+**[Watch the walkthrough video](https://drive.google.com/file/d/1UOfVn_m8iSDeC3XahPVYfjuHkQ8CjvKD/view?usp=sharing)**
 
 ---
 

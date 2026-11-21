@@ -31,10 +31,14 @@ def _squash(s: str) -> str:
 def numbers_in(text: str) -> set[Decimal]:
     out = set()
     for m in _NUM.finditer(text):
-        d = parse_decimal(m.group(0))
-        if d is not None:
-            out.add(abs(d).normalize())
-            out.add(d.normalize())
+        # The pattern lets spaces join digits ("1 234,50"), which also glues table columns
+        # ("2   90.00   180.00") into one token. Accept the whole token and each part of it.
+        tok = m.group(0)
+        for cand in (tok, *tok.split()):
+            d = parse_decimal(cand)
+            if d is not None:
+                out.add(abs(d).normalize())
+                out.add(d.normalize())
     return out
 
 

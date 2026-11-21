@@ -387,3 +387,13 @@ def test_stage_spreadsheet_without_provider_and_unmappable_columns_fails(tmp_pat
     with pytest.raises(DocumentError) as ei:
         stage.extract_document(_db(doc, []), doc.id)
     assert ei.value.code is ErrorCode.EXTRACTION_PARSE_ERROR
+
+
+@pytest.mark.unit
+def test_numbers_in_table_row_are_each_grounded():
+    """Columns separated by spaces must not be glued into one number."""
+    from decimal import Decimal as D
+    from app.extraction.grounding import numbers_in
+    nums = numbers_in("Consulting hour           2       90.00      180.00")
+    assert {D("2"), D("90"), D("180")} <= nums
+    assert D("1234.50") in numbers_in("Total 1 234,50")       # thousands separator still works

@@ -62,7 +62,11 @@ def test_factory_none_configured(monkeypatch):
     with pytest.raises(DocumentError) as ei:
         factory.resolve_llm()
     assert ei.value.code is ErrorCode.LLM_NOT_CONFIGURED
-    assert factory.resolve_embedder() is None
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "auto")
+    assert factory.resolve_embedder() is None                   # auto: no key -> no embedder
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "gemini")
+    with pytest.raises(DocumentError):                          # explicit: key required
+        factory.resolve_embedder()
 
 
 @pytest.mark.unit

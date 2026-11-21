@@ -19,3 +19,9 @@ def client(mock_db) -> Generator[TestClient, None, None]:
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ui_config(tmp_path, monkeypatch):
+    """A key saved through the UI must never leak into tests (it overrides settings)."""
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path / "ui-config"))

@@ -77,7 +77,7 @@ def _deskew(gray: np.ndarray) -> np.ndarray:
 
     angles = []
     for line in lines:
-        x1, y1, x2, y2 = line[0]
+        x1, y1, x2, y2 = (int(v) for v in np.ravel(line)[:4])   # (N,1,4) in OpenCV 4, (N,4) in 5
         if x2 - x1 != 0:
             angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
             if abs(angle) < 45:
@@ -142,6 +142,12 @@ def iter_image_frames(file_path: Path) -> Iterator[np.ndarray]:
 
 def count_image_frames(file_path: Path) -> int:
     return check_image_limits(file_path)
+
+
+def preprocess_gray(img: np.ndarray) -> np.ndarray:
+    """Gentler variant: grayscale -> deskew -> upscale, no thresholding. Tesseract binarizes
+    on its own; adaptive thresholding can erase text on some scans."""
+    return _upscale_if_needed(_deskew(_to_grayscale(img)))
 
 
 def preprocess(img: np.ndarray) -> np.ndarray:

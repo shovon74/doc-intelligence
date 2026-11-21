@@ -15,6 +15,8 @@ from app.processing.errors import DocumentError, ErrorCode
 logger = logging.getLogger(__name__)
 
 OCR_LANGS = settings.OCR_LANGS
+_WEAK_CHARS = 100     # fewer characters than this, or confidence below _WEAK_CONF, triggers a retry
+_WEAK_CONF = 0.6
 
 
 @dataclass
@@ -56,6 +58,11 @@ def preprocess_and_ocr(img: np.ndarray) -> OCRResult:
     """Full pipeline: preprocess (grayscale, deskew, denoise, upscale) -> OCR."""
     t_start = time.time()
     text, confidence = _run_tesseract(image_preprocess.preprocess(img))
+    if len(text) < _WEAK_CHARS or confidence < _WEAK_CONF:
+        # Thresholding can erase text on some scans; retry without it and keep the better read.
+        alt_text, alt_conf = _run_tesseract(image_preprocess.preprocess_gray(img))
+        if len(alt_text) * alt_conf > len(text) * confidence:
+            text, confidence = alt_text, alt_conf
     duration_ms = int((time.time() - t_start) * 1000)
     return OCRResult(text=text, confidence=confidence, duration_ms=duration_ms)
 

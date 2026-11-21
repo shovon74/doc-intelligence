@@ -1,6 +1,6 @@
 # AI-Assisted Development Disclosure
 
-This covers deliverable 9 of the assignment: the AI prompts and a disclosure of AI-assisted development.
+This covers the AI prompts and the disclosure of AI-assisted development for this project.
 
 ## 1. Development tools
 

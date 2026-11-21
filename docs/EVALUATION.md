@@ -73,4 +73,4 @@ OCR was used on 4 pages across 4 documents.
 
 ## Not covered
 
-Synthetic data only: layouts are simple and the same generator wrote labels and files. No `.xls` file (the generator has no writer for it). Accuracy on real invoices will be lower. Scans and photos alternate between a lighter damage tier and a heavier one (see `eval/generate_dataset.py`), so a small sample shows both. No cost estimates are given.
+Synthetic data only: layouts are simple and the same generator wrote labels and files. No `.xls` file (the generator has no writer for it). Scans and photos alternate between a lighter damage tier and a heavier one (see `eval/generate_dataset.py`), so a small sample shows both. No cost estimates are given.

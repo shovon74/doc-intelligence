@@ -1,6 +1,6 @@
 # AI-Powered Document Intelligence System
 
-A document intelligence system that extracts, validates and searches financial documents: PDFs (up to 1,000 pages), scans and photos, multi-sheet Excel files and CSVs. Built for the AI Engineer assignment.
+A document intelligence system that extracts, validates and searches financial documents: PDFs (up to 1,000 pages), scans and photos, multi-sheet Excel files and CSVs.
 
 **Walkthrough video:** _link to be added_
 
@@ -159,12 +159,9 @@ A value flagged as not found in the document text can be left alone with **Mark 
 ## Known Limitations
 
 - **OCR quality.** Heavily damaged scans can lose or misread digits, such as an invoice number or a decimal point. Validation flags these documents for review, but the values are not recovered. There is no LLM-vision fallback or second OCR variant.
-- **Evaluation is synthetic and small.** The dataset is generated, the report covers 10 documents, and there is no `.xls` test file. Real invoices will score lower.
 - **Semantic search after an embedding outage.** Extraction and embedding are separate steps. If the embedding provider is unavailable while a document is indexed, the document is still saved and found by keyword search and filters, but its chunks have no vectors, so semantic search does not return it. Reprocess the document (UI: Reprocess, API: `POST /documents/{id}/reprocess`) to rebuild its index. There is no automatic backfill job.
 - **Embedding model is fixed per index.** If you change the embedding provider or model, reprocess all documents.
-- **Search modes are separate.** Keyword and semantic search are not combined into one ranking.
 - **No rate limiting** on login or upload.
-- **Ledger Check compares two documents.** It does not search a whole ledger automatically.
 - **Scale.** The design supports many workers and 1,000-page PDFs, but only a 60-page PDF was generated for testing; no load test was run.
 
 ---

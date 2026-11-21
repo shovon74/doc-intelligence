@@ -126,4 +126,4 @@ Two processed documents are compared invoice by invoice. Invoices are paired by 
 
 ## Not built
 
-Rate limiting, hybrid (combined) search ranking, LLM-vision fallback for poor scans, and frontend tests. See the README limitations.
+Rate limiting, hybrid (combined) search ranking, LLM-vision fallback for poor scans, and frontend tests.

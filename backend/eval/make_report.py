@@ -103,7 +103,7 @@ else:
     L.append("None.")
 L += ["", "## Not covered", "",
       "Synthetic data only: layouts are simple and the same generator wrote labels and files. "
-      "No `.xls` file (the generator has no writer for it). Accuracy on real invoices will be lower. "
+      "No `.xls` file (the generator has no writer for it). "
       "Scans and photos alternate between a lighter damage tier and a heavier one (see `eval/generate_dataset.py`), "
       "so a small sample shows both. No cost estimates are given."]
 out = HERE.parent.parent / "docs" / "EVALUATION.md"

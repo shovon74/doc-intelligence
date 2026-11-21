@@ -5,7 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Doc, errMsg, IN_FLIGHT, Page } from './api';
 import { Badge, btn, btn2, card, Err, input } from './ui';
 
-const STATUSES = ['uploaded', 'queued', 'processing', 'extracting', 'validating', 'completed', 'needs_review', 'failed'];
+// The four pipeline steps (queued, processing, extracting, validating) last seconds each, so they are one choice.
+const STATUS_FILTERS: [string, string][] = [
+  ['uploaded', 'Not started'], ['in_progress', 'In progress'], ['completed', 'Completed'],
+  ['needs_review', 'Needs review'], ['failed', 'Failed'],
+];
 
 const CONSENT = 'Start processing? The document will be sent to the extraction model (LLM).';
 
@@ -87,9 +91,8 @@ export default function Documents() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
-  const [review, setReview] = useState(false);
   const [q, setQ] = useState('');
-  const params = { page, status: status || undefined, needs_review: review || undefined, q: q || undefined };
+  const params = { page, status: status || undefined, q: q || undefined };
 
   const list = useQuery({
     queryKey: ['documents', params],
@@ -114,12 +117,8 @@ export default function Documents() {
                  onChange={(e) => { setQ(e.target.value); setPage(1); }} />
           <select className={`${input} w-auto`} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+            {STATUS_FILTERS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
           </select>
-          <label className="text-sm flex items-center gap-1">
-            <input type="checkbox" checked={review} onChange={(e) => { setReview(e.target.checked); setPage(1); }} />
-            Needs review
-          </label>
           <button className={`${btn2} ml-auto`} onClick={() => reprocessAll.mutate()}>Reprocess all failed</button>
         </div>
         <Err msg={list.isError ? errMsg(list.error) : remove.isError ? errMsg(remove.error) : null} />

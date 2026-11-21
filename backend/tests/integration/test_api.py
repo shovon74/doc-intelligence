@@ -160,6 +160,11 @@ def test_list_detail_status_file_reprocess_and_delete(client, db):
     failed = client.get(f"{API}/documents?status=failed", headers=h).json()
     assert [d["id"] for d in failed["items"]] == [ids[0]]
     assert failed["items"][0]["invoice_count"] == 1 and failed["items"][0]["needs_review_count"] == 1
+    db.get(Document, __import__("uuid").UUID(ids[1])).status = "extracting"
+    db.flush()
+    running = client.get(f"{API}/documents?status=in_progress", headers=h).json()
+    assert [d["id"] for d in running["items"]] == [ids[1]]                 # any pipeline step
+    assert client.get(f"{API}/documents?status=uploaded", headers=h).json()["total"] == 1
     assert client.get(f"{API}/documents?q=f1", headers=h).json()["total"] == 1
     assert client.get(f"{API}/documents?q=%25", headers=h).json()["total"] == 0     # no wildcard abuse
     assert client.get(f"{API}/documents?status=bogus", headers=h).status_code == 422

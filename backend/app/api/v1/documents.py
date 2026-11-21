@@ -122,14 +122,16 @@ def list_documents(status_: str | None = Query(None, alias="status"),
                    sort: str = Query("created_at"), order: str = Query("desc", pattern="^(asc|desc)$"),
                    page: Page = Depends(pagination), db: Session = Depends(get_db),
                    user: CurrentUser = Depends(get_current_user)):
-    if status_ is not None and status_ not in STATUSES:
+    if status_ is not None and status_ not in STATUSES + ("in_progress",):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            f"status must be one of: {', '.join(STATUSES)}.")
+                            f"status must be one of: {', '.join(STATUSES)}, in_progress.")
     if sort not in SORTS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"sort must be one of: {', '.join(SORTS)}.")
     query = select(Document).where(Document.user_id == user.id)
-    if status_:
+    if status_ == "in_progress":                 # any step of the pipeline
+        query = query.where(Document.status.in_(IN_FLIGHT))
+    elif status_:
         query = query.where(Document.status == status_)
     if type_:
         query = query.where(Document.file_ext == type_.lower().lstrip("."))
